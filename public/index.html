@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CERTA — Open World</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
+
+    /* ── Splash ── */
+    #splash {
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at 50% 60%, #0a1a2e 0%, #000 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 200; gap: 12px;
+    }
+    #splash h1 { font-size: 72px; letter-spacing: 12px; color: #e8c46a; text-shadow: 0 0 40px #e8c46a88, 0 0 80px #e8c46a44; font-weight: 900; }
+    #splash p { color: #8899aa; font-size: 16px; letter-spacing: 2px; margin-bottom: 16px; }
+    #splash input { padding: 14px 24px; font-size: 18px; border-radius: 10px; border: 2px solid #e8c46a55; background: #ffffff0d; color: #fff; outline: none; text-align: center; width: 300px; transition: border-color 0.2s; }
+    #splash input:focus { border-color: #e8c46a; }
+    #splash button { padding: 14px 50px; font-size: 17px; font-weight: 700; letter-spacing: 2px; background: linear-gradient(135deg, #e8c46a, #c49a40); color: #111; border: none; border-radius: 10px; cursor: pointer; transition: transform 0.1s, box-shadow 0.2s; box-shadow: 0 4px 24px #e8c46a44; }
+    #splash button:hover { transform: translateY(-2px); box-shadow: 0 8px 32px #e8c46a66; }
+    .splash-divider { width: 200px; height: 1px; background: #e8c46a33; margin: 8px 0; }
+
+    /* ── Canvas ── */
+    #game-canvas { display: block; }
+
+    /* ── HUD ── */
+    #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+
+    /* Damage flash */
+    #damage-overlay {
+      position: absolute; inset: 0;
+      background: rgba(255, 0, 0, 0);
+      pointer-events: none;
+      transition: background 0.15s ease-in, background 0.4s ease-out;
+    }
+    #damage-overlay.flash { background: rgba(255, 0, 0, 0.38); }
+
+    /* Crosshair */
+    #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.85); box-shadow: 0 0 6px rgba(0,0,0,0.8); }
+
+    /* Top-right info */
+    #top-right { position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+    #player-count { color: #fff; background: rgba(0,0,0,0.55); backdrop-filter: blur(6px); padding: 8px 16px; border-radius: 10px; font-size: 14px; border: 1px solid rgba(255,255,255,0.1); }
+    #coords { color: rgba(255,255,255,0.6); font-size: 11px; font-family: monospace; background: rgba(0,0,0,0.4); padding: 4px 10px; border-radius: 6px; }
+
+    /* HP Bar */
+    #hp-wrap {
+      position: absolute; bottom: 190px; left: 16px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    #hp-label { color: rgba(255,255,255,0.7); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+    #hp-bar-bg { width: 220px; height: 16px; background: rgba(0,0,0,0.55); border-radius: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,0.15); }
+    #hp-bar { height: 100%; width: 100%; background: #44ff44; border-radius: 8px; transition: width 0.2s, background 0.3s; }
+    #hp-text { color: #fff; font-size: 13px; font-weight: bold; }
+
+    /* Ammo display */
+    #ammo-display {
+      position: absolute; bottom: 160px; right: 16px;
+      color: #fff; font-size: 20px; font-weight: bold;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+      padding: 10px 18px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      font-family: monospace; letter-spacing: 2px;
+    }
+
+    /* Pickup prompt */
+    #pickup-prompt {
+      position: absolute; top: 55%; left: 50%; transform: translateX(-50%);
+      color: #ffdd55; font-size: 15px; font-weight: bold;
+      background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+      padding: 8px 20px; border-radius: 20px;
+      border: 1px solid #ffdd5566;
+      display: none;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+    /* Chat */
+    #chat-wrap { position: absolute; bottom: 80px; left: 16px; width: 360px; pointer-events: none; }
+    #chat-messages { max-height: 160px; overflow: hidden; display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+    #chat-messages .msg { color: #fff; font-size: 13px; background: rgba(0,0,0,0.45); backdrop-filter: blur(4px); padding: 4px 10px; border-radius: 6px; border-left: 3px solid #e8c46a66; animation: fadein 0.2s ease; }
+    #chat-messages .msg.system { border-left-color: #44ccff88; color: #aaddff; font-style: italic; }
+    #chat-messages .msg.combat { border-left-color: #ff444488; color: #ffaaaa; }
+    @keyframes fadein { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; } }
+    #chat-input-wrap { display: flex; pointer-events: all; gap: 6px; }
+    #chat-input { flex: 1; padding: 8px 12px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; color: #fff; font-size: 13px; outline: none; display: none; }
+    #chat-input.open { display: block; }
+    #chat-input::placeholder { color: rgba(255,255,255,0.4); }
+
+    /* Controls hint */
+    #hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.6); font-size: 12px; background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); padding: 7px 18px; border-radius: 20px; white-space: nowrap; }
+
+    /* Minimap */
+    #minimap { position: absolute; bottom: 16px; right: 16px; width: 160px; height: 160px; }
+    #minimap canvas { width: 100%; height: 100%; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+    #minimap-label { text-align: center; color: rgba(255,255,255,0.5); font-size: 10px; letter-spacing: 2px; margin-top: 4px; }
+
+    /* ── Death Screen ── */
+    #death-screen {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.82);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+    }
+    #death-screen h2 { font-size: 64px; color: #ff2222; letter-spacing: 8px; font-weight: 900; text-shadow: 0 0 40px #ff222266; animation: deathPulse 1.5s infinite; }
+    #death-screen p { color: #aaa; font-size: 18px; }
+    @keyframes deathPulse { 0%,100% { text-shadow: 0 0 40px #ff222266; } 50% { text-shadow: 0 0 80px #ff2222cc; } }
+    #respawn-btn { padding: 16px 60px; font-size: 18px; font-weight: 700; letter-spacing: 3px; background: linear-gradient(135deg, #e8c46a, #c49a40); color: #111; border: none; border-radius: 12px; cursor: pointer; pointer-events: all; transition: transform 0.15s; box-shadow: 0 4px 24px #e8c46a44; }
+    #respawn-btn:hover { transform: scale(1.05); }
+  </style>
+</head>
+<body>
+
+<div id="splash">
+  <h1>⚔ CERTA</h1>
+  <p>OPEN WORLD BROWSER MMO</p>
+  <div class="splash-divider"></div>
+  <input id="name-input" type="text" placeholder="Enter your name" maxlength="20" autocomplete="off" />
+  <button id="enter-btn">ENTER WORLD</button>
+</div>
+
+<canvas id="game-canvas"></canvas>
+
+<div id="hud">
+  <div id="damage-overlay"></div>
+  <div id="crosshair"></div>
+
+  <div id="top-right">
+    <div id="player-count">👥 1 player</div>
+    <div id="coords">X: 0  Z: 0</div>
+  </div>
+
+  <div id="hp-wrap">
+    <div id="hp-label">❤ Health</div>
+    <div id="hp-bar-bg"><div id="hp-bar"></div></div>
+    <div id="hp-text">100 / 100</div>
+  </div>
+
+  <div id="ammo-display">[ no gun ]</div>
+
+  <div id="pickup-prompt">🔫 Press E to pick up gun</div>
+
+  <div id="chat-wrap">
+    <div id="chat-messages"></div>
+    <div id="chat-input-wrap">
+      <input id="chat-input" type="text" placeholder="Press Enter to chat…" maxlength="120" autocomplete="off" />
+    </div>
+  </div>
+
+  <div id="hint">WASD · Move &nbsp;|&nbsp; Space · Jump &nbsp;|&nbsp; F · Punch &nbsp;|&nbsp; Click · Shoot &nbsp;|&nbsp; E · Pick up &nbsp;|&nbsp; RMB+drag · Camera &nbsp;|&nbsp; Enter · Chat</div>
+
+  <div id="minimap">
+    <canvas id="minimap-canvas" width="160" height="160"></canvas>
+    <div id="minimap-label">MAP</div>
+  </div>
+</div>
+
+<!-- Death screen (outside #hud so it overlays everything) -->
+<div id="death-screen">
+  <h2>YOU DIED</h2>
+  <p id="death-msg">You were killed.</p>
+  <button id="respawn-btn">RESPAWN</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/game.js"></script>
+</body>
+</html>
