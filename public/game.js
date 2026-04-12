@@ -347,67 +347,83 @@ class CertaGame {
     this.vmRoot.position.set(0.18, -0.26, -0.55);
     this.vmScene.add(this.vmRoot);
 
-    // Adidas sleeve material — black with 3 white stripes
+    // Arms and gun — built once, visibility controlled per-state
     this._buildViewmodelArms();
-    this._buildViewmodelGun('pistol'); // default, rebuilt on pickup
+    // No gun built until first pickup — avoids showing phantom pistol at spawn
+    // Arms also hidden until pickup (no gun = fists only, handled via _buildViewmodelGun)
+    if (this.vmArmL) this.vmArmL.visible = false;
+    if (this.vmArmR) this.vmArmR.visible = false;
   }
 
   _buildViewmodelArms() {
-    // Clear existing arms
     if (this.vmArmL) this.vmRoot.remove(this.vmArmL);
     if (this.vmArmR) this.vmRoot.remove(this.vmArmR);
 
     const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x111111 }); // black
     const stripeMat = new THREE.MeshLambertMaterial({ color: 0xffffff }); // white stripes
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xc68642 });  // skin
+    const skinMat   = new THREE.MeshLambertMaterial({ color: 0xc68642 }); // skin tone
 
     const makeArm = (isLeft) => {
       const g = new THREE.Group();
-      // Upper arm (sleeve) — scaled to fit FPS viewmodel
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.30, 0.10), sleeveMat);
-      upper.position.y = 0.15;
-      g.add(upper);
-      // 3 white vertical stripes on the sleeve side
-      [-0.04, 0, 0.04].forEach((ox) => {
+
+      // ── CORRECTED ORIENTATION: hand at TOP (visible), sleeve at BOTTOM (off-screen) ──
+      // In vmCamera space +Y is up, -Y is down. Arms extend downward off screen.
+      // The hand/wrist should be visible near the gun grip (high Y in arm-group space).
+      // The sleeve extends downward and disappears below the frustum.
+
+      // Hand — top of arm group, grips gun
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.10, 0.08), skinMat);
+      hand.position.y = 0.22;
+      g.add(hand);
+
+      // Forearm (skin) — just below hand
+      const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.24, 0.09), skinMat);
+      forearm.position.y = 0.03;
+      g.add(forearm);
+
+      // Upper arm sleeve (black Adidas) — extends downward, partially off screen
+      const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.30, 0.10), sleeveMat);
+      sleeve.position.y = -0.20;
+      g.add(sleeve);
+
+      // 3 white Adidas stripes on sleeve (placed at sleeve Y)
+      [-0.04, 0, 0.04].forEach(ox => {
         const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.28, 0.003), stripeMat);
-        stripe.position.set(ox, 0.15, isLeft ? -0.052 : 0.052);
+        stripe.position.set(ox, -0.20, isLeft ? -0.052 : 0.052);
         g.add(stripe);
       });
-      // Forearm (skin)
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.24, 0.09), skinMat);
-      lower.position.y = -0.13;
-      g.add(lower);
-      // Hand
-      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.09, 0.07), skinMat);
-      hand.position.y = -0.28;
-      g.add(hand);
+
       return g;
     };
 
-    // Right arm — trigger hand, right of center, angled up toward gun grip
+    // Right arm — trigger hand, right side
     this.vmArmR = makeArm(false);
-    this.vmArmR.position.set(0.16, -0.05, 0.0);
-    this.vmArmR.rotation.x = -0.18; // slight tilt forward
+    this.vmArmR.position.set(0.16, -0.08, 0.0);
+    this.vmArmR.rotation.x = 0.08;
     this.vmRoot.add(this.vmArmR);
 
-    // Left arm — support hand, left of center, slightly further back and higher
+    // Left arm — support hand, left side, slightly further forward (holding barrel area)
     this.vmArmL = makeArm(true);
-    this.vmArmL.position.set(-0.18, -0.08, -0.12);
-    this.vmArmL.rotation.x = -0.22;
+    this.vmArmL.position.set(-0.16, -0.10, -0.14);
+    this.vmArmL.rotation.x = 0.10;
     this.vmRoot.add(this.vmArmL);
   }
 
   _buildViewmodelGun(type) {
+    // Remove old gun mesh
     if (this.vmGunMesh) this.vmRoot.remove(this.vmGunMesh);
+
     this.vmGunMesh = this._makeGunModel(type, true);
-    // In vmRoot space, the gun barrel models along +X.
-    // rotation.y = PI/2 rotates +X into -Z (into the screen = forward), giving the FPS side view.
+    // rotation.y = PI/2: gun's local +X (barrel direction) maps to -Z (into screen) ✓
     this.vmGunMesh.rotation.y = Math.PI / 2;
-    // Sit the gun so the grip lines up with the right hand
-    this.vmGunMesh.position.set(-0.02, 0.04, 0.0);
-    // Only visible when the player actually has a gun
-    this.vmGunMesh.visible = this.hasGun;
+    // Position so grip aligns with right hand
+    this.vmGunMesh.position.set(-0.02, 0.06, 0.0);
+    this.vmGunMesh.visible = true;
     this.vmRoot.add(this.vmGunMesh);
+
+    // Show arms now that a gun is held
+    if (this.vmArmL) this.vmArmL.visible = true;
+    if (this.vmArmR) this.vmArmR.visible = true;
   }
 
   // ── Gun 3D model builder ─────────────────────────────────────
@@ -431,26 +447,26 @@ class CertaGame {
       add(new THREE.BoxGeometry(0.5, 0.22, 0.16), dark, 0.08, 0.06, 0);   // body
       add(new THREE.BoxGeometry(0.32, 0.12, 0.12), blk, 0.28, 0.06, 0);    // slide
       add(new THREE.BoxGeometry(0.16, 0.3, 0.14), tan, -0.1, -0.14, 0);  // grip
-      add(new THREE.CylinderGeometry(0.04, 0.04, 0.18, 8), grey, 0.42, 0.06, 0, Math.PI / 2, 0, 0); // barrel tip
+      add(new THREE.CylinderGeometry(0.04, 0.04, 0.18, 8), grey, 0.42, 0.06, 0, 0, 0, -Math.PI / 2); // barrel tip — rz=-PI/2 so axis is +X
     } else if (type === 'shotgun') {
       add(new THREE.BoxGeometry(0.82, 0.22, 0.18), dark, 0.08, 0.06, 0);  // receiver
-      add(new THREE.CylinderGeometry(0.06, 0.06, 0.72, 8), grey, 0.48, 0.06, 0, Math.PI / 2, 0, 0); // barrel
+      add(new THREE.CylinderGeometry(0.06, 0.06, 0.72, 8), grey, 0.48, 0.06, 0, 0, 0, -Math.PI / 2); // barrel — axis +X
       add(new THREE.BoxGeometry(0.48, 0.16, 0.16), tan, -0.18, -0.04, 0); // pump
       add(new THREE.BoxGeometry(0.28, 0.38, 0.16), tan, -0.28, -0.2, 0);  // stock
     } else if (type === 'ar') {
       add(new THREE.BoxGeometry(0.90, 0.24, 0.18), dark, 0.04, 0.06, 0);  // body
       add(new THREE.BoxGeometry(0.26, 0.14, 0.12), grey, -0.38, 0.06, 0);  // carry handle
-      add(new THREE.CylinderGeometry(0.045, 0.045, 0.42, 8), grey, 0.52, 0.09, 0, Math.PI / 2, 0, 0); // barrel
+      add(new THREE.CylinderGeometry(0.045, 0.045, 0.42, 8), grey, 0.52, 0.09, 0, 0, 0, -Math.PI / 2); // barrel — axis +X
       add(new THREE.BoxGeometry(0.18, 0.36, 0.12), dark, -0.05, -0.18, 0); // mag
       add(new THREE.BoxGeometry(0.12, 0.08, 0.18), blk, -0.06, 0.18, 0);   // top rail
       add(new THREE.BoxGeometry(0.28, 0.34, 0.14), tan, -0.25, -0.11, 0); // stock
     } else if (type === 'sniper') {
       add(new THREE.BoxGeometry(1.10, 0.22, 0.18), dark, 0.04, 0.06, 0);  // long body
-      add(new THREE.CylinderGeometry(0.04, 0.04, 0.60, 8), grey, 0.66, 0.07, 0, Math.PI / 2, 0, 0); // barrel
+      add(new THREE.CylinderGeometry(0.04, 0.04, 0.60, 8), grey, 0.66, 0.07, 0, 0, 0, -Math.PI / 2); // barrel — axis +X
       add(new THREE.BoxGeometry(0.36, 0.42, 0.14), tan, -0.36, -0.12, 0);  // stock
-      // Scope
-      add(new THREE.CylinderGeometry(0.05, 0.05, 0.44, 8), blk, 0.1, 0.19, 0, Math.PI / 2, 0, 0);
-      add(new THREE.CylinderGeometry(0.07, 0.05, 0.06, 8), blk, 0.33, 0.19, 0, Math.PI / 2, 0, 0); // scope front
+      // Scope — axis +X so it aligns with barrel after group rotation
+      add(new THREE.CylinderGeometry(0.05, 0.05, 0.44, 8), blk, 0.1, 0.19, 0, 0, 0, -Math.PI / 2);
+      add(new THREE.CylinderGeometry(0.07, 0.05, 0.06, 8), blk, 0.33, 0.19, 0, 0, 0, -Math.PI / 2); // scope front
       add(new THREE.BoxGeometry(0.12, 0.06, 0.12), blk, -0.08, -0.2, 0);   // mag
     }
 
@@ -812,8 +828,14 @@ class CertaGame {
       type: 'shoot',
     }));
     this._muzzleFlash();
-    // Recoil
+    // Viewmodel recoil
     this.vmRecoil = 1.0;
+    // Screen recoil — pitch camera upward slightly (gun type determines strength)
+    const recoilStrength = {
+      pistol: 0.018, ar: 0.010, shotgun: 0.055, sniper: 0.080,
+    };
+    const kick = recoilStrength[this.gunType] ?? 0.018;
+    this.pitch = Math.max(-1.3, Math.min(1.3, this.pitch - kick));
     // Reduce local ammo immediately for responsiveness
     this.ammo = Math.max(0, this.ammo - 1);
     this._updateHUD();
@@ -929,7 +951,9 @@ class CertaGame {
     document.getElementById('death-screen').style.display = 'none';
     this.hasGun = false; this.ammo = 0; this.gunType = null;
     this.isReloading = false;
-    if (this.vmGunMesh) this.vmGunMesh.visible = false; // no gun after respawn
+    if (this.vmGunMesh) { this.vmGunMesh.visible = false; }
+    if (this.vmArmL) this.vmArmL.visible = false;
+    if (this.vmArmR) this.vmArmR.visible = false;
     document.getElementById('reload-ring').classList.remove('visible');
     this.ws?.readyState === WebSocket.OPEN && this.ws.send(JSON.stringify({ type: 'respawn' }));
   }
@@ -1303,7 +1327,8 @@ class CertaGame {
 
   _onZombieDied(msg) {
     const z = this.zombies.get(msg.id);
-    if (z && msg.gore) {
+    if (z) {
+      // Always spawn gore — server never sends msg.gore so old guard was always false
       const pos = z.mesh.position.clone();
       this.gore.spawnBlood(pos.clone().add(new THREE.Vector3(0, 0.8, 0)), 40, true);
       this.gore.spawnRagdoll(pos, null);
@@ -1383,34 +1408,35 @@ class CertaGame {
 
     ctx.fillStyle = '#2a6a2a';
     this.trees.forEach(t => {
-      const mx = cx + (t.x - px) * scale, my = cy + (t.z - pz) * scale;
+      const mx = cx + (t.x - px) * scale, my = cy - (t.z - pz) * scale;
       ctx.beginPath(); ctx.arc(mx, my, 2, 0, Math.PI * 2); ctx.fill();
     });
 
     ctx.fillStyle = '#b8a070';
     BUILDING_DEFS.forEach(b => {
-      const mx = cx + (b.x - px) * scale, my = cy + (b.z - pz) * scale;
+      const mx = cx + (b.x - px) * scale, my = cy - (b.z - pz) * scale;
       ctx.fillRect(mx - b.w * scale / 2, my - b.d * scale / 2, b.w * scale, b.d * scale);
     });
 
     ctx.fillStyle = '#cc2222';
     this.zombies.forEach(z => {
-      const mx = cx + (z.mesh.position.x - px) * scale, my = cy + (z.mesh.position.z - pz) * scale;
+      const mx = cx + (z.mesh.position.x - px) * scale, my = cy - (z.mesh.position.z - pz) * scale;
       ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI * 2); ctx.fill();
     });
 
     this.others.forEach(o => {
       ctx.fillStyle = o.color || '#ff4444';
-      const mx = cx + (o.mesh.position.x - px) * scale, my = cy + (o.mesh.position.z - pz) * scale;
+      const mx = cx + (o.mesh.position.x - px) * scale, my = cy - (o.mesh.position.z - pz) * scale;
       ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI * 2); ctx.fill();
     });
 
     // Self
     ctx.fillStyle = this.myColor || '#00ccff';
     ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+    // Direction arrow — negate dz to match negated map Z
     const dx = Math.sin(this.yaw) * 8, dz = Math.cos(this.yaw) * 8;
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + dx, cy + dz); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + dx, cy - dz); ctx.stroke();
 
     ctx.globalCompositeOperation = 'destination-in';
     ctx.beginPath(); ctx.arc(cx, cy, cx, 0, Math.PI * 2); ctx.fill();
@@ -1420,44 +1446,44 @@ class CertaGame {
   // ── Collision resolution (buildings + trees) ─────────────────
   _resolveCollisions() {
     const r = 0.45;  // player capsule radius
-    const T = 0.45;  // wall thickness (slightly padded)
+    const T = 0.42;  // wall thickness
     const DW = 2.0;  // door width
-    const px = this.footPos.x, pz = this.footPos.z;
 
-    // Helper: push player out of an AABB (2D, ignoring Y)
-    const pushOut = (cx, cz, hw, hd) => {
-      // Find closest point on box to player circle center
-      const nearX = Math.max(cx - hw, Math.min(this.footPos.x, cx + hw));
-      const nearZ = Math.max(cz - hd, Math.min(this.footPos.z, cz + hd));
-      const dx = this.footPos.x - nearX;
-      const dz = this.footPos.z - nearZ;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > 0 && dist < r) {
-        this.footPos.x += (dx / dist) * (r - dist);
-        this.footPos.z += (dz / dist) * (r - dist);
+    // Proper AABB + circle overlap:
+    // Compute Minkowski sum overlap on each axis.
+    // Push out along whichever axis has the SMALLER overlap (minimum penetration).
+    const pushOut = (bx, bz, hw, hd) => {
+      const overlapX = (hw + r) - Math.abs(this.footPos.x - bx);
+      const overlapZ = (hd + r) - Math.abs(this.footPos.z - bz);
+      if (overlapX <= 0 || overlapZ <= 0) return; // no overlap
+      if (overlapX < overlapZ) {
+        // Push along X
+        this.footPos.x += (this.footPos.x < bx) ? -overlapX : overlapX;
+      } else {
+        // Push along Z
+        this.footPos.z += (this.footPos.z < bz) ? -overlapZ : overlapZ;
       }
     };
 
-    // Buildings — each wall is a separate AABB so the door gap is preserved
+    const hw2 = T / 2;
+
     for (const b of BUILDING_DEFS) {
-      const hw2 = T / 2;
-      // Back wall (full width)
+      // Back wall (full width, no door)
       pushOut(b.x, b.z - b.d / 2, b.w / 2, hw2);
       // Left wall
       pushOut(b.x - b.w / 2, b.z, hw2, b.d / 2);
       // Right wall
       pushOut(b.x + b.w / 2, b.z, hw2, b.d / 2);
-      // Front wall left piece (from -w/2 to -DW/2)
+      // Front wall — two pieces either side of door gap
       if (b.w > DW) {
-        const pieceW = (b.w - DW) / 4;  // half-width of each front piece
-        pushOut(b.x - (b.w + DW) / 4, b.z + b.d / 2, pieceW, hw2);
-        // Front wall right piece (from +DW/2 to +w/2)
-        pushOut(b.x + (b.w + DW) / 4, b.z + b.d / 2, pieceW, hw2);
+        const pieceHW = (b.w - DW) / 4; // half-width of each front piece
+        pushOut(b.x - (b.w + DW) / 4, b.z + b.d / 2, pieceHW, hw2);
+        pushOut(b.x + (b.w + DW) / 4, b.z + b.d / 2, pieceHW, hw2);
       }
     }
 
-    // Trees — cylinder check (trunk radius ~0.48)
-    const treeR = 0.48 + r;
+    // Trees — cylinder check (trunk base radius ≈ 0.48)
+    const treeR = 0.52 + r;
     for (const t of this.trees) {
       const dx = this.footPos.x - t.x;
       const dz = this.footPos.z - t.z;
@@ -1657,7 +1683,7 @@ class CertaGame {
       this._animateCharacter(o.mesh, o.mesh.position.distanceTo(prev) > 0.01, t);
     });
 
-    // ── Interpolate zombies ──
+    // ── Interpolate zombies + HP bar distance culling ──
     this.zombies.forEach(z => {
       const prev = z.mesh.position.clone();
       z.mesh.position.lerp(z.targetPos, 0.2);
@@ -1670,6 +1696,13 @@ class CertaGame {
       }
       z.mesh.userData.isZombie = true;
       this._animateCharacter(z.mesh, moved > 0.01, t);
+
+      // Only show HP bar when zombie is within 30 units of player
+      if (z.hpSprite) {
+        const pdx = z.mesh.position.x - this.footPos.x;
+        const pdz = z.mesh.position.z - this.footPos.z;
+        z.hpSprite.visible = (pdx * pdx + pdz * pdz) < 900; // 30² = 900
+      }
     });
 
     // ── Floating loot ──
