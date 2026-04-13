@@ -90,11 +90,29 @@ body::after { content:''; position:fixed; inset:0; background-image: linear-grad
 
 footer { position:relative; z-index:1; text-align:center; padding:0 24px 40px; font-size:11px; color:rgba(255,255,255,0.1); letter-spacing:0.1em; text-transform:uppercase; }
 @keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+
+/* ── Leaderboards ── */
+.lb-section { width:100%; max-width:1320px; padding-bottom:72px; animation:fadeIn 1s 0.5s forwards; opacity:0; }
+.lb-heading { font-family:'DM Serif Display',serif; font-style:italic; font-size:clamp(28px,5vw,40px); color:var(--gold2); text-align:center; margin-bottom:40px; }
+.lb-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:24px; width:100%; }
+.lb-card { background:linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01)); border:1px solid var(--border); border-radius:16px; padding:28px 22px; }
+.lb-header { font-size:12px; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold); margin-bottom:20px; display:flex; align-items:center; gap:8px; }
+.lb-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:5px; }
+.lb-list li { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:6px; background:rgba(255,255,255,0.025); font-size:12px; }
+.lb-list li:nth-child(1) { background:rgba(212,168,83,0.09); border:1px solid rgba(212,168,83,0.14); }
+.lb-list li:nth-child(2) { background:rgba(180,180,180,0.06); }
+.lb-list li:nth-child(3) { background:rgba(180,100,40,0.07); }
+.lb-rank { min-width:22px; text-align:center; font-size:15px; }
+.lb-name { flex:1; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lb-val  { color:var(--gold2); font-size:13px; font-weight:500; white-space:nowrap; }
+.lb-empty { color:var(--muted); font-size:12px; padding:7px 10px; }
+
 @media(max-width:600px) {
   .page{padding:70px 20px 60px;} .hero{margin-bottom:48px;}
   .games-grid{grid-template-columns:1fr;}
   .game-card{padding:32px 28px 72px; border-radius:16px;}
   .game-play-btn{bottom:28px;right:28px;width:46px;height:46px;}
+  .lb-grid{grid-template-columns:1fr;}
 }
 </style>
 </head>
@@ -199,6 +217,31 @@ footer { position:relative; z-index:1; text-align:center; padding:0 24px 40px; f
       </a>
 
     </div>
+
+    <!-- ── Leaderboards ── -->
+    <div class="lb-section">
+      <div class="divider">
+        <div class="divider-line"></div>
+        <div class="divider-icon">🏆</div>
+        <div class="divider-line"></div>
+      </div>
+      <div class="lb-heading">Leaderboards</div>
+      <div class="lb-grid">
+        <div class="lb-card">
+          <div class="lb-header">💀 Zombie Kills</div>
+          <ol id="lb-zombies" class="lb-list"><li class="lb-empty">Loading…</li></ol>
+        </div>
+        <div class="lb-card">
+          <div class="lb-header">💰 Richest Players</div>
+          <ol id="lb-money" class="lb-list"><li class="lb-empty">Loading…</li></ol>
+        </div>
+        <div class="lb-card">
+          <div class="lb-header">⏱ Fastest Solitaire</div>
+          <ol id="lb-solitaire" class="lb-list"><li class="lb-empty">Loading…</li></ol>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <footer>CertaGames &nbsp;·&nbsp; ♠ ♥ ♦ ♣ ⚔</footer>
@@ -262,6 +305,39 @@ function doLogout(){clearToken();window.location.reload();}
     }catch(e){clearToken();document.getElementById('login-screen').classList.add('show');}
   } else {document.getElementById('login-screen').classList.add('show');}
 })();
+
+// ── Leaderboards ──────────────────────────────
+function fmtTime(secs) {
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+function renderLB(id, entries) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!entries.length) { el.innerHTML = '<li class="lb-empty">No entries yet</li>'; return; }
+  const medals = ['🥇', '🥈', '🥉'];
+  el.innerHTML = entries.map((e, i) => `
+    <li>
+      <span class="lb-rank">${medals[i] || (i + 1)}</span>
+      <span class="lb-name">${(e.name || 'Unknown').replace(/[<>]/g, '')}</span>
+      <span class="lb-val">${e.val}</span>
+    </li>`).join('');
+}
+async function loadLeaderboards() {
+  try {
+    const [zData, mData, sData] = await Promise.all([
+      fetch('/api/leaderboard/zombies').then(r => r.json()).catch(() => []),
+      fetch('/api/leaderboard/money').then(r => r.json()).catch(() => []),
+      fetch('/api/leaderboard/solitaire').then(r => r.json()).catch(() => []),
+    ]);
+    renderLB('lb-zombies',  zData.slice(0, 10).map(e => ({ name: e.name, val: `${e.kills || 0} kills` })));
+    renderLB('lb-money',    mData.slice(0, 10).map(e => ({ name: e.name, val: `$${e.balance}` })));
+    renderLB('lb-solitaire',sData.slice(0, 10).map(e => ({ name: e.name, val: fmtTime(e.time) })));
+  } catch(e) { /* leaderboard load failed silently */ }
+}
+// Load boards once main page is visible
+const _origShowMain = showMain;
+window.showMain = function(user) { _origShowMain(user); loadLeaderboards(); };
 </script>
 </body>
 </html>

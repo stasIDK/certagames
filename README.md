@@ -1,131 +1,113 @@
-# ⚔ CERTA.GAMES — Setup Guide
+# ⚔ CertaGames
 
-## What this is
-A browser-based 3D open-world MMO base frame built with:
-- **Three.js** (3D rendering in the browser — no plugins needed)
-- **Node.js + WebSockets** (real-time multiplayer: all players share one world)
-- **Cloudflare** (DNS, DDoS protection, SSL)
+A browser-based multiplayer gaming platform — no downloads, no installs. Sign in and play instantly.
 
 ---
 
-## Step 1 — Run locally (Windows 11)
+## Games
 
-### Install Node.js
-1. Go to https://nodejs.org and download the **LTS** version
-2. Run the installer (just keep clicking Next)
-3. Open **Windows Terminal** or **PowerShell**
+### Certa: Open World
+A first-person shooter set in a shared open world. Every player is in the same map at the same time.
 
-### Run the game
-```powershell
-cd path\to\certa-games
+- **56 zombies** roaming the map — small, medium, large, and boss variants
+- Zombies **aggro** when you get close and **deaggro** (with health regen) when you escape
+- Kill zombies to earn **money** — small $5 / medium $10 / large $20 / boss $65
+- Spend money at the **upgrade shop** (press `B`) — gun damage, max HP, adrenaline regen, energy shield, ammo refill
+- **Die and lose $50** off your balance
+- Pick up **guns** scattered in buildings — Pistol, Shotgun, AR, Sniper
+- Health **regenerates slowly** when out of combat
+- Full FPS controls: aim down sights, reload, punch, drop weapons, chat
+- **Minimap**, hit markers, gore effects, bullet tracers, muzzle flash
+- Balance is shared with card games — earn money in poker, spend it in the shooter
+
+### Solitaire
+Classic Klondike solitaire. Beat the clock and land on the leaderboard.
+
+### Durak
+Russian card game. Multiplayer rooms with real money stakes, bots, and a full deck engine.
+
+### Poker
+Texas Hold'em. Bluff, raise, and outlast the table. Supports up to 6 players, bots, and TV spectator mode.
+
+---
+
+## Leaderboards
+
+Three global leaderboards on the main page, updated live:
+- **Zombie Kills** — total zombies eliminated across all sessions
+- **Richest Players** — current account balance
+- **Fastest Solitaire** — best completion time
+
+---
+
+## Controls (Shooter)
+
+| Key | Action |
+|---|---|
+| **WASD** | Move |
+| **Mouse** | Look |
+| **Left click** | Shoot / punch |
+| **Right click** | Aim down sights |
+| **E** | Pick up gun |
+| **R** | Reload |
+| **G** | Drop weapon |
+| **F** | Punch |
+| **B** | Open upgrade shop |
+| **Space** | Jump |
+| **T** | Chat |
+| **Escape** | Close chat / exit shop |
+
+---
+
+## Running Locally
+
+```bash
 npm install
 npm start
 ```
 
-Then open your browser to: **http://localhost:3000**
+Open **http://localhost:3000** in your browser. Open a second tab to see multiplayer working.
 
-You'll see the splash screen. Open a second tab to the same URL and you'll see two players in the same world.
+Requires Node.js 18+. A PostgreSQL database is optional — the app runs without one (auth and scores are disabled without DB).
 
----
+### Environment variables (`.env`)
 
-## Step 2 — Get a VPS (required for real hosting)
-
-Cloudflare only handles DNS and CDN — you need a server to actually run the game.
-
-**Recommended providers (cheapest options):**
-| Provider | Plan | Cost | Link |
-|---|---|---|---|
-| Hetzner | CX22 (2 vCPU, 4GB RAM) | ~$4/mo | hetzner.com |
-| DigitalOcean | Basic Droplet (1 vCPU, 1GB) | $6/mo | digitalocean.com |
-| Linode/Akamai | Nanode (1 vCPU, 1GB) | $5/mo | linode.com |
-
-Choose **Ubuntu 24.04 LTS** as the OS.
-
----
-
-## Step 3 — Set up your VPS
-
-SSH into your server:
-```bash
-ssh root@YOUR_SERVER_IP
+```
+PORT=3000
+DATABASE_URL=postgresql://user:pass@localhost:5432/certadb
+JWT_SECRET=your-secret-here
+ADMIN_KEY=your-admin-key
 ```
 
-### Install Node.js + PM2
+---
+
+## Deploying
+
+### VPS setup (Ubuntu)
+
 ```bash
+# Install Node.js
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
+sudo apt install -y nodejs nginx
 
-# PM2 keeps the server running after you disconnect
+# Install PM2 (keeps server alive)
 npm install -g pm2
-```
 
-### Install nginx
-```bash
-sudo apt install -y nginx
-```
-
-### Upload your game files
-From your Windows machine, use [WinSCP](https://winscp.net) or run:
-```powershell
-# In PowerShell on your Windows machine
-scp -r .\certa-games root@YOUR_SERVER_IP:/var/www/certa-games
-```
-
-### Install dependencies on the server
-```bash
-cd /var/www/certa-games
+# Clone and start
+cd /var/www/certagames
 npm install --production
+pm2 start server.js --name certagames
+pm2 startup && pm2 save
 ```
 
-### Start with PM2
-```bash
-pm2 start server.js --name certa-games
-pm2 startup     # makes it auto-restart on reboot
-pm2 save
-```
+### Cloudflare DNS
 
-### Configure nginx
-```bash
-sudo cp /var/www/certa-games/nginx.conf /etc/nginx/sites-available/certa-games
-sudo ln -s /etc/nginx/sites-available/certa-games /etc/nginx/sites-enabled/
-sudo nginx -t          # test config
-sudo systemctl reload nginx
-```
+Point an `A` record at your server IP with the orange cloud (proxied).  
+Go to **Network → WebSockets** and make sure it is **ON** — required for real-time multiplayer.  
+Set SSL/TLS to **Flexible** if running on port 80 behind nginx.
 
----
+### Firewall
 
-## Step 4 — Cloudflare DNS
-
-1. Log into **cloudflare.com** → select **certa.games**
-2. Go to **DNS → Records**
-3. Add:
-   ```
-   Type: A
-   Name: @              (for certa.games)
-   IPv4: YOUR_SERVER_IP
-   Proxy: ✅ Proxied (orange cloud)
-   TTL: Auto
-   ```
-   Also add:
-   ```
-   Type: A
-   Name: www
-   IPv4: YOUR_SERVER_IP
-   Proxy: ✅ Proxied
-   ```
-
-4. Go to **SSL/TLS → Overview** → set to **"Flexible"** (since Node runs on port 80)
-
-5. Go to **Network** → ensure **WebSockets** is **ON** ✅
-   (It is on by default for all plans including Free)
-
-6. Wait 1–5 minutes for DNS to propagate, then visit **https://certa.games**
-
----
-
-## Step 5 — Firewall (important)
-
-On your VPS, open only the needed ports:
 ```bash
 sudo ufw allow OpenSSH
 sudo ufw allow 80/tcp
@@ -138,84 +120,40 @@ sudo ufw enable
 ## File Structure
 
 ```
-certa-games/
-├── server.js          ← Node.js WebSocket + HTTP server
+certagames/
+├── server.js              ← Unified server: HTTP, WebSocket shooter, Socket.io card games
 ├── package.json
-├── nginx.conf         ← Copy to /etc/nginx/sites-available/
+├── .env                   ← Secrets (not committed)
 └── public/
-    ├── index.html     ← Game shell + HUD
-    └── game.js        ← Three.js 3D game engine
+    ├── index.html         ← Main lobby + leaderboards
+    ├── game.html          ← FPS shooter shell + HUD
+    ├── game.js            ← Three.js shooter engine
+    └── cards/
+        ├── solitaire.html
+        ├── durak.html
+        └── poker.html
 ```
 
 ---
 
-## Controls
+## Tech Stack
 
-| Key | Action |
+| Layer | Technology |
 |---|---|
-| **WASD** or **Arrow keys** | Move |
-| **Right-click + drag** | Rotate camera |
-| **Scroll wheel** | Zoom in/out |
-| **Space** | Jump |
-| **Enter** | Open/send chat |
-| **Escape** | Close chat |
-
----
-
-## What's built in
-
-- **Open world terrain** — rolling hills with procedural grass texture
-- **250 trees** with stacked cone foliage + trunks
-- **60 rocks** scattered across the map
-- **Lake** 
-- **Drifting clouds**
-- **Block-style player characters** with walk animation
-- **Nametag sprites** above every player
-- **Third-person camera** (WoW-style right-drag orbit + scroll zoom)
-- **Real-time multiplayer** via WebSockets (20 updates/sec per player)
-- **Circular minimap** showing all players + trees
-- **Chat system** (press Enter)
-- **Coordinates HUD**
-- **Player count**
-
----
-
-## Expanding the game (next steps)
-
-Here are natural next steps to grow this into a real MMO:
-
-1. **Database** — Add PostgreSQL or MongoDB to persist player accounts/positions
-2. **Authentication** — Login system with hashed passwords
-3. **Zones/chunks** — Only sync nearby players to reduce bandwidth at scale
-4. **Terrain editor** — Use simplex-noise or a heightmap image for more realistic terrain
-5. **Combat** — Add attack/health systems, hit detection
-6. **NPCs** — Server-side AI mobs with pathfinding
-7. **Items/inventory** — Drops, equipment, stats
-8. **Larger world** — Load terrain in chunks as the player moves
-9. **Docker** — Containerize for easy deployment and scaling
+| 3D rendering | Three.js (r128) |
+| Realtime shooter | Raw WebSockets |
+| Card game rooms | Socket.io |
+| Auth | JWT + bcrypt |
+| Database | PostgreSQL (optional) |
+| Server | Node.js + Express |
+| Hosting | Any VPS + Cloudflare |
 
 ---
 
 ## Monitoring
 
 ```bash
-pm2 status            # see if server is running
-pm2 logs certa-games  # live server logs
-pm2 monit             # CPU/memory dashboard
+pm2 status
+pm2 logs certagames
+pm2 monit
 ```
-
----
-
-## Troubleshooting
-
-**WebSocket not connecting?**
-- Check Cloudflare: Network → WebSockets is ON
-- Check nginx config has the Upgrade headers
-- Run `pm2 logs` to see errors
-
-**Players don't see each other?**
-- Make sure only one server.js is running: `pm2 list`
-
-**Lag/jitter on other players?**
-- This is normal at low player counts — the interpolation smooths it out
-- At scale, implement server-side zone partitioning

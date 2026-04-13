@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql:*)",
+      "Bash(winget list:*)",
+      "Bash(winget install:*)",
+      "Bash(winget search:*)",
+      "Bash(\"/c/Program Files/PostgreSQL/17/bin/psql\" --version)",
+      "Bash(net start:*)",
+      "Bash(PGPASSWORD=2019Stephen /c/Program Files/PostgreSQL/17/bin/psql:*)",
+      "Bash(PGPASSWORD=postgres /c/Program Files/PostgreSQL/17/bin/psql:*)",
+      "Bash(PGPASSWORD=postgres \"/c/Program Files/PostgreSQL/17/bin/psql\" -U postgres -c \"ALTER USER postgres PASSWORD '2019Stephen';\")",
+      "Bash(PGPASSWORD=2019Stephen \"/c/Program Files/PostgreSQL/17/bin/psql\" -U postgres -c \"CREATE DATABASE certagames;\")",
+      "Bash(timeout 10 node server.js)",
+      "Bash(timeout 8 node server.js)",
+      "Bash(node -e \"require\\('./server.js'\\)\")",
+      "Bash(node -e ':*)",
+      "Bash(node --check public/game.js)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(node server.js)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3000\")",
+      "Bash(taskkill /F /PID 10736)",
+      "Bash(taskkill:*)",
+      "Bash(node:*)"
+    ]
+  }
+}

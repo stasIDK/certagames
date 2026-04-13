@@ -255,6 +255,14 @@ class CertaGame {
     this.zombies = new Map();
     this.loots = [];
 
+    // Economy + upgrades
+    this.balance = 100;
+    this.zombieKills = 0;
+    this.shieldHp = 0;
+    this.upgrades = {};      // { dmg_boost: 0, extra_hp: 0, fast_regen: false, shield: 0 }
+    this.upgradeDefs = {};   // filled from server welcome message
+    this.shopOpen = false;
+
     // Gore + traces
     this.gore = null;
     this.traces = null;
@@ -755,7 +763,9 @@ class CertaGame {
     document.getElementById('lock-overlay').addEventListener('click', requestLock);
     document.addEventListener('pointerlockchange', () => {
       this.isLocked = document.pointerLockElement === canvas;
-      document.getElementById('lock-overlay').style.display = this.isLocked ? 'none' : 'flex';
+      // Only show re-lock prompt when actually in-game and not in shop/chat
+      document.getElementById('lock-overlay').style.display =
+        (this.isLocked || this.shopOpen || !this.alive) ? 'none' : 'flex';
     });
 
     // Mouse look
@@ -818,6 +828,10 @@ class CertaGame {
       if (e.code === 'KeyR') this._doReload();
       if (e.code === 'KeyG') this._doDropWeapon();
       if (e.code === 'KeyT') { e.preventDefault(); this._openChat(); }
+      if (e.code === 'KeyB') {
+        if (this.shopOpen) this._closeShop();
+        else this._openShop();
+      }
     });
     document.addEventListener('keyup', e => {
       this.keys[e.code] = false;
@@ -982,11 +996,18 @@ class CertaGame {
   }
 
   // ── Death / Respawn ───────────────────────────────────────────
-  _onDied() {
+  _onDied(penalty = 0) {
     this.alive = false;
     clearInterval(this.autoFireInterval);
     this.autoFireInterval = null;
+    if (this.shopOpen) this._closeShop();
     setTimeout(() => {
+      const penaltyEl = document.getElementById('death-penalty');
+      if (penaltyEl) {
+        penaltyEl.textContent = penalty > 0
+          ? `Lost $${penalty} on death  ·  Balance: $${this.balance}`
+          : `Balance: $${this.balance}`;
+      }
       document.getElementById('death-screen').style.display = 'flex';
     }, 900);
   }
@@ -997,16 +1018,20 @@ class CertaGame {
     this.isReloading = false; this.isADS = false;
     document.getElementById('reload-ring').classList.remove('visible');
     document.getElementById('crosshair').classList.remove('ads');
-    this._showFists(); // bare fists after respawn
+    this._showFists();
     this.ws?.readyState === WebSocket.OPEN && this.ws.send(JSON.stringify({ type: 'respawn' }));
+    // Re-acquire pointer lock (button click = valid user gesture)
+    this.renderer.domElement.requestPointerLock();
   }
 
   // ── WebSocket ─────────────────────────────────────────────────
   _connectWS() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.ws = new WebSocket(`${proto}//${location.host}`);
+    this.ws = new WebSocket(`${proto}//${location.host}/ws`);
     this.ws.addEventListener('open', () => {
-      this.ws.send(JSON.stringify({ type: 'setName', name: this.myName }));
+      // Send name + JWT so server can link wallet/kills to account
+      const token = (typeof getToken === 'function') ? (getToken() || '') : '';
+      this.ws.send(JSON.stringify({ type: 'setName', name: this.myName, token }));
       this._addChat(null, 'Connected to world!', 'system');
     });
     this.ws.addEventListener('message', ({ data }) => {
@@ -1026,9 +1051,17 @@ class CertaGame {
         msg.players.forEach(p => { if (p.id !== this.myId) this._spawnOther(p); });
         msg.zombies.forEach(z => this._spawnZombie(z));
         msg.loots.forEach(l => this._setLootAvailable(l.id, l.available, l.gunType));
+        if (msg.balance !== undefined) this.balance = msg.balance;
+        if (msg.kills !== undefined) this.zombieKills = msg.kills;
+        if (msg.upgradeDefs) this.upgradeDefs = msg.upgradeDefs;
         this._updatePlayerCount();
         this._updateHUD();
-        // Update minimap self-color
+        break;
+
+      case 'playerStats':
+        this.balance = msg.balance;
+        this.zombieKills = msg.kills;
+        this._updateHUD();
         break;
 
       case 'playerJoin':
@@ -1087,28 +1120,55 @@ class CertaGame {
 
       case 'selfHit':
         this.hp = msg.hp;
+        if (msg.shieldHp !== undefined) this.shieldHp = msg.shieldHp;
         this._updateHUD();
         this._flashDamage();
+        this.vmRecoil = Math.max(this.vmRecoil, 0.5); // flinch
         break;
 
-      case 'zombieAttack':
-        // Flinch the viewmodel
-        this.vmRecoil = Math.max(this.vmRecoil, 0.5);
-        this._flashDamage();
+      case 'hpRegen':
+        this.hp = msg.hp;
+        this._updateHUD();
         break;
 
       case 'youDied':
         this.hp = 0;
         this._updateHUD();
-        this._onDied();
+        this._onDied(msg.penalty || 0);
         break;
 
       case 'respawned':
         this.alive = true;
+        this.maxHp = msg.maxHp || this.maxHp;
         this.hp = this.maxHp;
+        if (msg.balance !== undefined) this.balance = msg.balance;
+        if (msg.kills !== undefined) this.zombieKills = msg.kills;
+        if (msg.shieldHp !== undefined) this.shieldHp = msg.shieldHp;
         this.footPos.set(msg.x, this._height(msg.x, msg.z), msg.z);
         this.velocity.set(0, 0, 0);
         this._updateHUD();
+        break;
+
+      case 'balanceUpdate':
+        this._showKillReward(msg.balance - this.balance);
+        this.balance = msg.balance;
+        this.zombieKills = msg.kills;
+        this._updateHUD();
+        break;
+
+      case 'upgradeResult':
+        if (msg.ok) {
+          this.balance = msg.balance;
+          if (msg.maxHp !== undefined) this.maxHp = msg.maxHp;
+          if (msg.shieldHp !== undefined) this.shieldHp = msg.shieldHp;
+          if (msg.upgradeId && msg.level !== undefined) this.upgrades[msg.upgradeId] = msg.level;
+          if (msg.upgradeId === 'fast_regen') this.upgrades.fast_regen = true;
+          this._updateHUD();
+          this._renderShopUI();
+          this._addChat(null, `Bought: ${this.upgradeDefs[msg.upgradeId]?.label || msg.upgradeId}!`, 'system');
+        } else {
+          this._showShopError(msg.error || 'Purchase failed');
+        }
         break;
 
       case 'ammoUpdate':
@@ -1286,24 +1346,44 @@ class CertaGame {
   // ── Zombies ───────────────────────────────────────────────────
   _spawnZombie(data) {
     if (this.zombies.has(data.id)) return;
-    const mesh = this._makeZombieMesh();
-    const hpSprite = this._makeZombieHpSprite(data.hp, data.maxHp);
-    mesh.add(hpSprite);
+    const zType = data.zType || 'medium';
+    const typeDef = CertaGame.ZOMBIE_TYPE_DEFS[zType] || CertaGame.ZOMBIE_TYPE_DEFS.medium;
+    const mesh = this._makeZombieMesh(zType);
     const gy = this._height(data.x, data.z);
     mesh.position.set(data.x, gy + FOOT_OFFSET, data.z);
     this.scene.add(mesh);
+
+    // HP sprite lives in world space (not child of scaled mesh) so it has consistent size
+    const hpSprite = this._makeZombieHpSprite(data.hp, data.maxHp);
+    const spriteY = gy + FOOT_OFFSET + typeDef.scale * 2.1 + 0.3;
+    hpSprite.position.set(data.x, spriteY, data.z);
+    this.scene.add(hpSprite);
+
     this.zombies.set(data.id, {
-      mesh, hpSprite,
+      mesh, hpSprite, zType,
+      scale: typeDef.scale,
       hp: data.hp, maxHp: data.maxHp,
       targetPos: new THREE.Vector3(data.x, gy + FOOT_OFFSET, data.z),
     });
   }
 
-  _makeZombieMesh() {
+  // Per-type visual configs — easy to tune
+  static get ZOMBIE_TYPE_DEFS() {
+    return {
+      small:  { skinColor: 0x8fb84e, darkColor: 0x5a8a2e, eyeColor: 0xff2200, scale: 0.72 },
+      medium: { skinColor: 0x6b8f4e, darkColor: 0x3a5a2e, eyeColor: 0xff2200, scale: 1.0  },
+      large:  { skinColor: 0x3a6a20, darkColor: 0x1a4010, eyeColor: 0xff6600, scale: 1.55 },
+      boss:   { skinColor: 0x1a2a10, darkColor: 0x0f1a08, eyeColor: 0xff0000, scale: 2.2  },
+    };
+  }
+
+  _makeZombieMesh(zType = 'medium') {
     const g = new THREE.Group();
-    const skin = new THREE.MeshLambertMaterial({ color: 0x6b8f4e }); // zombie green-skin
-    const dark = new THREE.MeshLambertMaterial({ color: 0x3a5a2e });
-    const eyes = new THREE.MeshBasicMaterial({ color: 0xff2200 }); // red eyes
+    const def = CertaGame.ZOMBIE_TYPE_DEFS[zType] || CertaGame.ZOMBIE_TYPE_DEFS.medium;
+
+    const skin = new THREE.MeshLambertMaterial({ color: def.skinColor });
+    const dark = new THREE.MeshLambertMaterial({ color: def.darkColor });
+    const eyes = new THREE.MeshBasicMaterial({ color: def.eyeColor });
 
     const add = (geo, m, x, y, z) => {
       const mesh = new THREE.Mesh(geo, m);
@@ -1315,18 +1395,29 @@ class CertaGame {
 
     add(new THREE.BoxGeometry(0.82, 1.05, 0.52), skin, 0, 0.52, 0);
     add(new THREE.BoxGeometry(0.72, 0.72, 0.72), skin, 0, 1.38, 0);
-    [-0.14, 0.14].forEach(ex => {
-      add(new THREE.BoxGeometry(0.1, 0.1, 0.04), eyes, ex, 1.48, 0.37);
-    });
-    g.armL = add(new THREE.BoxGeometry(0.26, 0.84, 0.27), dark, -0.56, 0.62, 0.14); // arms raised
+    [-0.14, 0.14].forEach(ex => add(new THREE.BoxGeometry(0.1, 0.1, 0.04), eyes, ex, 1.48, 0.37));
+    g.armL = add(new THREE.BoxGeometry(0.26, 0.84, 0.27), dark, -0.56, 0.62, 0.14);
     g.armR = add(new THREE.BoxGeometry(0.26, 0.84, 0.27), skin, 0.56, 0.62, 0.14);
     g.legL = add(new THREE.BoxGeometry(0.32, 0.82, 0.32), skin, -0.22, -0.42, 0);
     g.legR = add(new THREE.BoxGeometry(0.32, 0.82, 0.32), dark, 0.22, -0.42, 0);
 
-    // Tilt arms forward (outstretched zombie pose)
+    // Outstretched zombie arms
     g.armL.rotation.x = -1.1;
     g.armR.rotation.x = -1.1;
 
+    // Boss gets bone crown
+    if (zType === 'boss') {
+      const boneMat = new THREE.MeshLambertMaterial({ color: 0xddccaa });
+      [-0.22, 0, 0.22].forEach(hx => {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.35, 5), boneMat);
+        horn.position.set(hx, 1.92, 0);
+        g.add(horn);
+      });
+    }
+
+    g.scale.setScalar(def.scale);
+    g.userData.isZombie = true;
+    g.userData.zType = zType;
     return g;
   }
 
@@ -1366,7 +1457,11 @@ class CertaGame {
 
   _removeZombie(id) {
     const z = this.zombies.get(id);
-    if (z) { this.scene.remove(z.mesh); this.zombies.delete(id); }
+    if (z) {
+      this.scene.remove(z.mesh);
+      this.scene.remove(z.hpSprite); // hp sprite is a separate scene object
+      this.zombies.delete(id);
+    }
   }
 
   _updateZombies(data) {
@@ -1426,12 +1521,30 @@ class CertaGame {
 
   // ── HUD ───────────────────────────────────────────────────────
   _updateHUD() {
+    // Health bar
     const pct = Math.max(0, this.hp / this.maxHp);
     const bar = document.getElementById('hp-bar');
     bar.style.width = (pct * 100) + '%';
     bar.style.background = pct > 0.5 ? '#44ff44' : pct > 0.25 ? '#ffaa00' : '#ff2222';
-    document.getElementById('hp-text').textContent = `${this.hp} / ${this.maxHp}`;
+    document.getElementById('hp-text').textContent = `${Math.round(this.hp)} / ${this.maxHp}`;
 
+    // Shield bar
+    const shieldContainer = document.getElementById('shield-container');
+    if (shieldContainer) {
+      shieldContainer.style.display = this.shieldHp > 0 ? 'block' : 'none';
+      const shieldBar = document.getElementById('shield-bar');
+      const shieldText = document.getElementById('shield-text');
+      if (shieldBar) shieldBar.style.width = Math.min(100, (this.shieldHp / 80) * 100) + '%';
+      if (shieldText) shieldText.textContent = `SHIELD ${this.shieldHp}`;
+    }
+
+    // Money + kills
+    const moneyEl = document.getElementById('money-display');
+    if (moneyEl) moneyEl.textContent = `$${this.balance}`;
+    const killsEl = document.getElementById('kills-display');
+    if (killsEl) killsEl.textContent = `💀 ${this.zombieKills} kills`;
+
+    // Ammo
     const ammoEl = document.getElementById('ammo-display');
     const gunName = document.getElementById('gun-name');
     if (this.hasGun && this.gunType) {
@@ -1445,6 +1558,84 @@ class CertaGame {
       ammoEl.textContent = '[ no gun ]';
       ammoEl.style.color = '#888';
     }
+  }
+
+  // ── Kill reward popup ─────────────────────────────────────────
+  _showKillReward(amount) {
+    if (!amount || amount <= 0) return;
+    const el = document.getElementById('kill-reward');
+    if (!el) return;
+    el.textContent = `+$${amount}`;
+    el.classList.remove('show');
+    void el.offsetWidth; // force reflow to restart animation
+    el.classList.add('show');
+  }
+
+  // ── Upgrade Shop ──────────────────────────────────────────────
+  _openShop() {
+    if (this.chatOpen || !this.alive) return;
+    this.shopOpen = true;
+    document.exitPointerLock();
+    document.getElementById('shop-overlay').classList.add('open');
+    this._renderShopUI();
+  }
+
+  _closeShop() {
+    this.shopOpen = false;
+    document.getElementById('shop-overlay').classList.remove('open');
+    // Prompt player to re-lock
+    if (this.alive) document.getElementById('lock-overlay').style.display = 'flex';
+  }
+
+  _renderShopUI() {
+    const balEl = document.getElementById('shop-balance-val');
+    if (balEl) balEl.textContent = this.balance;
+
+    const container = document.getElementById('shop-items');
+    if (!container) return;
+    container.innerHTML = '';
+
+    Object.entries(this.upgradeDefs).forEach(([uid, def]) => {
+      const isConsumable = uid === 'ammo_refill' || uid === 'shield';
+      const curLevel = this.upgrades[uid] || 0;
+      const isMaxed = !isConsumable && curLevel >= def.maxLevel;
+      const levelCost = isConsumable ? def.cost : def.cost * (curLevel + 1);
+      const canAfford = this.balance >= levelCost;
+
+      let extraInfo = '';
+      if (!isConsumable && def.maxLevel < 999) extraInfo = `<div class="shop-item-level">Level ${curLevel}/${def.maxLevel}</div>`;
+      if (uid === 'shield' && this.shieldHp > 0) extraInfo = `<div class="shop-item-level">Current shield: ${this.shieldHp} HP</div>`;
+
+      const item = document.createElement('div');
+      item.className = 'shop-item' + (isMaxed ? ' maxed' : '');
+      item.innerHTML = `
+        <div class="shop-item-name">${def.label}</div>
+        <div class="shop-item-desc">${def.desc}</div>
+        ${extraInfo}
+        <button class="shop-buy-btn" data-uid="${uid}" ${isMaxed || !canAfford ? 'disabled' : ''}>
+          ${isMaxed ? 'MAXED' : `Buy  $${levelCost}`}
+        </button>`;
+      item.querySelector('button').addEventListener('click', () => this._buyUpgrade(uid));
+      container.appendChild(item);
+    });
+  }
+
+  _buyUpgrade(uid) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'buyUpgrade', upgradeId: uid }));
+    }
+  }
+
+  _refreshShopUI() {
+    if (this.shopOpen) this._renderShopUI();
+  }
+
+  _showShopError(msg) {
+    const el = document.getElementById('shop-error');
+    if (!el) return;
+    el.textContent = msg;
+    clearTimeout(this._shopErrorTimeout);
+    this._shopErrorTimeout = setTimeout(() => { el.textContent = ''; }, 2500);
   }
 
   // ── Chat ──────────────────────────────────────────────────────
@@ -1481,10 +1672,13 @@ class CertaGame {
       ctx.fillRect(mx - b.w * scale / 2, my - b.d * scale / 2, b.w * scale, b.d * scale);
     });
 
-    ctx.fillStyle = '#cc2222';
     this.zombies.forEach(z => {
       const mx = cx + (z.mesh.position.x - px) * scale, my = cy + (z.mesh.position.z - pz) * scale;
-      ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI * 2); ctx.fill();
+      // Different colors and sizes per zombie type
+      const dotColors = { small: '#ff6644', medium: '#cc2222', large: '#aa1100', boss: '#ff0066' };
+      const dotSizes  = { small: 2, medium: 3, large: 4, boss: 6 };
+      ctx.fillStyle = dotColors[z.zType] || '#cc2222';
+      ctx.beginPath(); ctx.arc(mx, my, dotSizes[z.zType] || 3, 0, Math.PI * 2); ctx.fill();
     });
 
     this.others.forEach(o => {
@@ -1732,7 +1926,7 @@ class CertaGame {
 
       // ── HUD coords ──
       document.getElementById('coords').textContent =
-        `X: ${this.footPos.x.toFixed(0)}  Z: ${this.footPos.z.toFixed(0)}`;
+        `X: ${this.footPos.x.toFixed(0)}  Z: ${this.footPos.z.toFixed(0)}  [B] Shop`;
 
       // ── Pickup prompt ──
       let nearLoot = false, nearLootType = '';
@@ -1775,6 +1969,12 @@ class CertaGame {
       }
       z.mesh.userData.isZombie = true;
       this._animateCharacter(z.mesh, moved > 0.01, t);
+      // Keep HP sprite above zombie head (accounts for different zombie scales)
+      z.hpSprite.position.set(
+        z.mesh.position.x,
+        z.mesh.position.y + (z.scale || 1.0) * 2.1 + 0.3,
+        z.mesh.position.z
+      );
     });
 
     // ── Floating loot ──

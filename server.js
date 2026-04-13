@@ -20,7 +20,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'certa-games-dev-secret-changeme';
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
+const io     = new Server(server, { cors: { origin: '*' }, destroyUpgrade: false });
 const PUBLIC  = path.join(__dirname, 'public');
 
 app.use(express.json());
@@ -44,7 +44,7 @@ async function initDB() {
   const connStr = process.env.DATABASE_URL || 'postgresql://postgres:2019Stephen@localhost:5432/solitaire';
   pool = new Pool({
     connectionString: connStr,
-    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+    ssl: (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')) ? { rejectUnauthorized: false } : false,
   });
   try {
     await pool.query(`
@@ -67,6 +67,7 @@ async function initDB() {
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(40);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(128);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS zombies_killed INTEGER NOT NULL DEFAULT 0;
     `);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);`).catch(()=>{});
     dbReady = true;
@@ -179,6 +180,26 @@ app.get('/api/leaderboard', async (_, res) => {
   catch(e) { res.status(500).json({ error: 'DB error' }); }
 });
 
+// ── Leaderboard routes ────────────────────────
+// Money / richest players
+app.get('/api/leaderboard/money', async (_, res) => {
+  if (!pool) return res.json([]);
+  try { const r = await dbQuery('SELECT name, balance FROM users ORDER BY balance DESC LIMIT 50'); res.json(r.rows); }
+  catch(e) { res.status(500).json({ error: 'DB error' }); }
+});
+// Zombie kills
+app.get('/api/leaderboard/zombies', async (_, res) => {
+  if (!pool) return res.json([]);
+  try { const r = await dbQuery('SELECT name, COALESCE(zombies_killed,0) AS kills FROM users ORDER BY zombies_killed DESC NULLS LAST LIMIT 50'); res.json(r.rows); }
+  catch(e) { res.status(500).json({ error: 'DB error' }); }
+});
+// Solitaire fastest — alias of /api/scores
+app.get('/api/leaderboard/solitaire', async (_, res) => {
+  if (!pool) return res.json([]);
+  try { const r = await dbQuery('SELECT id,name,time,date FROM scores ORDER BY time ASC LIMIT 50'); res.json(r.rows); }
+  catch(e) { res.status(500).json({ error: 'DB error' }); }
+});
+
 // ── Solitaire score routes ────────────────────
 const MIN_TIME=30, MAX_TIME=86400;
 app.get('/api/scores', async (_, res) => {
@@ -222,19 +243,46 @@ server.on('upgrade', (req, socket, head) => {
   // else socket.io handles it
 });
 
-// ── Shooter constants ─────────────────────────
-const PLAYER_HP          = 100;
-const ZOMBIE_COUNT       = 20;
-const ZOMBIE_HP          = 80;
-const ZOMBIE_SPEED       = 2.8;
-const ZOMBIE_AGGRO_RANGE = 42;
-const ZOMBIE_PUNCH_RANGE = 2.8;
-const ZOMBIE_PUNCH_DAMAGE = 10;
-const ZOMBIE_PUNCH_CD    = 1400;
-const ZOMBIE_RESPAWN_DELAY = 30000;
-const PUNCH_RANGE        = 3.0;
-const PUNCH_DAMAGE       = 20;
-const LOOT_RESPAWN_TIME  = 300000;
+// ══════════════════════════════════════════════
+//  SHOOTER — TUNABLE CONSTANTS (easy to adjust)
+// ══════════════════════════════════════════════
+
+// ── Player ────────────────────────────────────
+const PLAYER_HP            = 100;    // base max HP
+const PLAYER_REGEN_RATE    = 1.5;   // HP/sec while out of combat
+const PLAYER_REGEN_DELAY   = 8.0;   // seconds after last hit before regen
+const PLAYER_DEATH_PENALTY = 50;    // $ lost on death (never below 0)
+const PLAYER_START_BALANCE = 100;   // starting wallet
+const PUNCH_RANGE          = 3.0;   // melee reach (units)
+const PUNCH_DAMAGE         = 20;    // fist damage
+const LOOT_RESPAWN_TIME    = 300000;// 5 min gun respawn
+
+// ── Zombie types ──────────────────────────────
+// All values here — change freely to tune difficulty
+const ZOMBIE_TYPES = {
+  small:  { hp:  40, speed: 3.8, damage:  6, reward:  5, aggroRange: 35, deaggroRange: 55, regenRate: 3.0, punchCd: 1100, punchRange: 2.4 },
+  medium: { hp:  80, speed: 2.8, damage: 12, reward: 10, aggroRange: 42, deaggroRange: 65, regenRate: 1.8, punchCd: 1400, punchRange: 2.8 },
+  large:  { hp: 180, speed: 1.8, damage: 20, reward: 20, aggroRange: 45, deaggroRange: 70, regenRate: 1.2, punchCd: 1800, punchRange: 3.2 },
+  boss:   { hp: 600, speed: 1.3, damage: 35, reward: 65, aggroRange: 55, deaggroRange: 85, regenRate: 0.8, punchCd: 2200, punchRange: 3.5 },
+};
+// How many of each type to spawn (edit counts here)
+const ZOMBIE_SPAWN_TABLE = [
+  ...Array(25).fill('small'),
+  ...Array(20).fill('medium'),
+  ...Array(8).fill('large'),
+  ...Array(3).fill('boss'),
+];
+const ZOMBIE_RESPAWN_DELAY = 30000; // ms before a killed zombie respawns
+
+// ── Upgrade shop ──────────────────────────────
+// cost scales per level: level 1 costs cost, level 2 costs cost*2, etc.
+const UPGRADE_DEFS = {
+  dmg_boost:  { cost: 150, label: '+ Gun Damage',  desc: '+30% gun damage per level', maxLevel: 3 },
+  extra_hp:   { cost: 175, label: '+ Max Health',  desc: '+50 max HP per level',      maxLevel: 2 },
+  fast_regen: { cost: 125, label: 'Adrenaline',    desc: '3× health regen rate',      maxLevel: 1 },
+  shield:     { cost: 200, label: 'Energy Shield', desc: '+80 HP shield buffer',      maxLevel: 999 }, // stackable consumable
+  ammo_refill:{ cost:  60, label: 'Ammo Refill',   desc: 'Instantly refill ammo',     maxLevel: 999 }, // always available
+};
 
 const GUN_DEFS = {
   pistol:  { damage:35,  ammo:12, maxAmmo:12, range:60,  pellets:1, fireRate:450  },
@@ -271,13 +319,22 @@ const loots = BUILDING_DEFS.map((b,i) => ({ id:i, x:b.x+1, z:b.z+1, gunType:b.gu
 // ── Zombies ───────────────────────────────────
 let zid = 0;
 const zombies = new Map();
-function spawnZombie(id) {
-  const i = id !== undefined ? id : zid++;
+function spawnZombie(forcedType) {
+  const i = zid++;
+  const zType = forcedType || ZOMBIE_SPAWN_TABLE[i % ZOMBIE_SPAWN_TABLE.length];
+  const typeDef = ZOMBIE_TYPES[zType] || ZOMBIE_TYPES.medium;
   const a = Math.random()*Math.PI*2, d = 50+Math.random()*180;
-  zombies.set(i, { id:i, x:Math.cos(a)*d, z:Math.sin(a)*d, y:0, hp:ZOMBIE_HP, maxHp:ZOMBIE_HP, alive:true, lastPunch:0, wanderAngle:Math.random()*Math.PI*2, wanderTimer:0 });
+  zombies.set(i, {
+    id:i, zType, typeDef,
+    x:Math.cos(a)*d, z:Math.sin(a)*d, y:0,
+    hp:typeDef.hp, maxHp:typeDef.hp,
+    alive:true, state:'idle',
+    lastPunch:0, wanderAngle:Math.random()*Math.PI*2, wanderTimer:0,
+  });
 }
-for (let i=0; i<ZOMBIE_COUNT; i++) spawnZombie();
-const sz = z => ({ id:z.id, x:+z.x.toFixed(2), z:+z.z.toFixed(2), hp:z.hp, maxHp:z.maxHp });
+// Spawn all zombies according to ZOMBIE_SPAWN_TABLE
+ZOMBIE_SPAWN_TABLE.forEach(t => spawnZombie(t));
+const sz = z => ({ id:z.id, x:+z.x.toFixed(2), z:+z.z.toFixed(2), hp:z.hp, maxHp:z.maxHp, zType:z.zType });
 
 // ── Players ───────────────────────────────────
 const shooterPlayers = new Map();
@@ -298,43 +355,92 @@ function shooterBroadcast(msg, excludeId=-1) {
 }
 function killShooterPlayer(p, killerName) {
   p.alive=false; p.hp=0; p.hasGun=false; p.gunType=null; p.ammo=0;
-  shooterSendTo(p.id, { type:'youDied', killedBy:killerName||'Zombie' });
+  const penalty = Math.min(p.balance, PLAYER_DEATH_PENALTY);
+  p.balance = Math.max(0, p.balance - penalty);
+  shooterSendTo(p.id, { type:'youDied', killedBy:killerName||'Zombie', penalty });
   shooterBroadcast({ type:'playerDied', id:p.id, name:p.name, killedBy:killerName||'Zombie' });
+  if (p.sub && penalty > 0) {
+    dbQuery('UPDATE users SET balance=GREATEST(balance-$1,0) WHERE auth_sub=$2', [penalty, p.sub]).catch(()=>{});
+  }
 }
 function scheduleZRespawn(z) {
   setTimeout(() => {
     const a=Math.random()*Math.PI*2, d=60+Math.random()*150;
-    z.x=Math.cos(a)*d; z.z=Math.sin(a)*d; z.hp=z.maxHp; z.alive=true;
+    z.x=Math.cos(a)*d; z.z=Math.sin(a)*d;
+    z.hp=z.typeDef.hp; z.alive=true; z.state='idle';
     shooterBroadcast({ type:'zombieRespawn', zombie:sz(z) });
   }, ZOMBIE_RESPAWN_DELAY);
 }
 
-// ── Zombie AI tick ────────────────────────────
+// ── Zombie AI + player regen tick ─────────────
 setInterval(() => {
   const now=Date.now(), dt=0.1;
-  const alive=[...shooterPlayers.values()].filter(p=>p.alive);
+  const alivePlayers=[...shooterPlayers.values()].filter(p=>p.alive);
+
   zombies.forEach(z => {
     if (!z.alive) return;
-    z.y=gh(z.x,z.z);
+    z.y = gh(z.x, z.z);
+    const t = z.typeDef;
+
     let nearest=null, nd=Infinity;
-    alive.forEach(p=>{ const d=Math.hypot(p.x-z.x,p.z-z.z); if(d<nd){nd=d;nearest=p;} });
-    if (nearest && nd<ZOMBIE_AGGRO_RANGE) {
-      const dx=nearest.x-z.x, dz=nearest.z-z.z, d=Math.hypot(dx,dz);
-      if (d>ZOMBIE_PUNCH_RANGE) { z.x+=(dx/d)*ZOMBIE_SPEED*dt; z.z+=(dz/d)*ZOMBIE_SPEED*dt; }
-      else if (now-z.lastPunch>ZOMBIE_PUNCH_CD) {
-        z.lastPunch=now; nearest.hp=Math.max(0,nearest.hp-ZOMBIE_PUNCH_DAMAGE);
-        shooterSendTo(nearest.id,{type:'selfHit',hp:nearest.hp,attacker:'Zombie'});
-        shooterBroadcast({type:'playerHp',id:nearest.id,hp:nearest.hp});
-        if (nearest.hp<=0) killShooterPlayer(nearest,'Zombie');
+    alivePlayers.forEach(p=>{ const d=Math.hypot(p.x-z.x,p.z-z.z); if(d<nd){nd=d;nearest=p;} });
+
+    if (z.state === 'aggro') {
+      // Deaggro if player moved far enough away
+      if (!nearest || nd > t.deaggroRange) {
+        z.state = 'idle';
+      } else {
+        // Chase or punch
+        const dx=nearest.x-z.x, dz=nearest.z-z.z, d=Math.hypot(dx,dz);
+        if (d > t.punchRange) {
+          z.x += (dx/d)*t.speed*dt;
+          z.z += (dz/d)*t.speed*dt;
+        } else if (now - z.lastPunch > t.punchCd) {
+          z.lastPunch = now;
+          let dmg = t.damage;
+          // Shield absorbs damage first
+          if (nearest.upgrades.shield > 0) {
+            const absorb = Math.min(nearest.upgrades.shield, dmg);
+            dmg -= absorb;
+            nearest.upgrades.shield = Math.max(0, nearest.upgrades.shield - absorb);
+          }
+          nearest.hp = Math.max(0, nearest.hp - dmg);
+          nearest.lastHitTime = now;
+          shooterSendTo(nearest.id, { type:'selfHit', hp:nearest.hp, attacker:'Zombie', shieldHp:nearest.upgrades.shield });
+          shooterBroadcast({ type:'playerHp', id:nearest.id, hp:nearest.hp });
+          if (nearest.hp <= 0) killShooterPlayer(nearest, 'Zombie');
+        }
       }
     } else {
-      z.wanderTimer-=dt;
-      if (z.wanderTimer<=0){z.wanderAngle=Math.random()*Math.PI*2;z.wanderTimer=2+Math.random()*3;}
-      z.x+=Math.cos(z.wanderAngle)*ZOMBIE_SPEED*0.35*dt;
-      z.z+=Math.sin(z.wanderAngle)*ZOMBIE_SPEED*0.35*dt;
-      const B=240; z.x=Math.max(-B,Math.min(B,z.x)); z.z=Math.max(-B,Math.min(B,z.z));
+      // Idle — check if player enters aggro range
+      if (nearest && nd < t.aggroRange) {
+        z.state = 'aggro';
+      } else {
+        // Wander + health regen
+        z.wanderTimer -= dt;
+        if (z.wanderTimer <= 0) { z.wanderAngle=Math.random()*Math.PI*2; z.wanderTimer=2+Math.random()*3; }
+        z.x += Math.cos(z.wanderAngle)*t.speed*0.35*dt;
+        z.z += Math.sin(z.wanderAngle)*t.speed*0.35*dt;
+        const B=240; z.x=Math.max(-B,Math.min(B,z.x)); z.z=Math.max(-B,Math.min(B,z.z));
+        if (z.hp < z.maxHp) z.hp = Math.min(z.maxHp, z.hp + t.regenRate*dt);
+      }
     }
   });
+
+  // Player health regen (slow, only while out of combat)
+  shooterPlayers.forEach(p => {
+    if (!p.alive || p.hp >= p.maxHp) return;
+    const timeSinceHit = (now - (p.lastHitTime||0)) / 1000;
+    if (timeSinceHit >= PLAYER_REGEN_DELAY) {
+      const rate = PLAYER_REGEN_RATE * (p.upgrades.fast_regen ? 3 : 1);
+      const prev = Math.round(p.hp);
+      p.hp = Math.min(p.maxHp, p.hp + rate*dt);
+      if (Math.round(p.hp) !== prev) {
+        shooterSendTo(p.id, { type:'hpRegen', hp:Math.round(p.hp) });
+      }
+    }
+  });
+
   shooterBroadcast({ type:'zombieUpdate', zombies:[...zombies.values()].filter(z=>z.alive).map(sz) });
 }, 100);
 
@@ -344,9 +450,14 @@ wss.on('connection', ws => {
   shooterSockets.set(id, ws);
   const p = {
     id, name:`Player${id}`, color:COLORS[(id-1)%COLORS.length],
+    sub: null,   // linked account (set via JWT token in setName)
     x:(Math.random()-0.5)*20, y:0, z:(Math.random()-0.5)*20,
     rotY:0, pitch:0, hp:PLAYER_HP, maxHp:PLAYER_HP,
     alive:true, hasGun:false, gunType:null, ammo:0, lastShot:0,
+    lastHitTime: 0,
+    balance: PLAYER_START_BALANCE,
+    zombiesKilled: 0,
+    upgrades: { dmg_boost:0, extra_hp:0, fast_regen:false, shield:0 },
   };
   shooterPlayers.set(id, p);
   console.log(`[+] Shooter player ${id}. Online: ${shooterPlayers.size}`);
@@ -356,10 +467,13 @@ wss.on('connection', ws => {
     players:[...shooterPlayers.values()].map(sp),
     zombies:[...zombies.values()].filter(z=>z.alive).map(sz),
     loots:loots.map(l=>({id:l.id,available:l.available,gunType:l.gunType})),
+    balance: p.balance,
+    kills: p.zombiesKilled,
+    upgradeDefs: UPGRADE_DEFS,
   }));
   shooterBroadcast({type:'playerJoin',player:sp(p)}, id);
 
-  ws.on('message', raw => {
+  ws.on('message', async raw => {
     let msg; try{msg=JSON.parse(raw);}catch{return;}
 
     switch(msg.type) {
@@ -370,7 +484,20 @@ wss.on('connection', ws => {
         break;
       }
       case 'setName': {
-        p.name=String(msg.name).replace(/[<>]/g,'').slice(0,20).trim()||p.name;
+        p.name = String(msg.name).replace(/[<>]/g,'').slice(0,20).trim() || p.name;
+        // Link account via JWT to persist balance + kills
+        if (msg.token) {
+          try {
+            const payload = verifyToken(msg.token);
+            p.sub = payload.sub;
+            const r = await dbQuery(
+              'SELECT balance, COALESCE(zombies_killed,0) AS zk FROM users WHERE auth_sub=$1',
+              [p.sub]
+            );
+            if (r.rows[0]) { p.balance = r.rows[0].balance; p.zombiesKilled = r.rows[0].zk; }
+          } catch(e) { /* DB unavailable or invalid token — use session defaults */ }
+          shooterSendTo(id, { type:'playerStats', balance:p.balance, kills:p.zombiesKilled });
+        }
         shooterBroadcast({type:'playerName',id,name:p.name});
         break;
       }
@@ -381,16 +508,29 @@ wss.on('connection', ws => {
       }
       case 'punch': {
         if (!p.alive) break;
+        const punchMult = 1.0 + (p.upgrades.dmg_boost||0) * 0.30;
+        const punchDmg = Math.round(PUNCH_DAMAGE * punchMult);
         zombies.forEach(z=>{
           if(!z.alive||Math.hypot(z.x-p.x,z.z-p.z)>PUNCH_RANGE) return;
-          z.hp-=PUNCH_DAMAGE; shooterSendTo(id,{type:'hitConfirm'});
-          if(z.hp<=0){z.alive=false;shooterBroadcast({type:'zombieDied',id:z.id,x:z.x,z:z.z,gore:true});scheduleZRespawn(z);}
-          else shooterBroadcast({type:'zombieHit',id:z.id,hp:z.hp,maxHp:z.maxHp});
+          z.hp -= punchDmg;
+          shooterSendTo(id,{type:'hitConfirm'});
+          if(z.hp<=0){
+            z.alive=false;
+            p.balance += z.typeDef.reward; p.zombiesKilled++;
+            shooterSendTo(id,{type:'balanceUpdate',balance:p.balance,kills:p.zombiesKilled});
+            if(p.sub) dbQuery('UPDATE users SET balance=balance+$1, zombies_killed=COALESCE(zombies_killed,0)+1 WHERE auth_sub=$2',[z.typeDef.reward,p.sub]).catch(()=>{});
+            shooterBroadcast({type:'zombieDied',id:z.id,x:z.x,z:z.z,gore:true});
+            scheduleZRespawn(z);
+          } else {
+            shooterBroadcast({type:'zombieHit',id:z.id,hp:z.hp,maxHp:z.maxHp});
+          }
         });
         shooterPlayers.forEach(t=>{
           if(t.id===id||!t.alive||Math.hypot(t.x-p.x,t.z-p.z)>PUNCH_RANGE) return;
-          t.hp=Math.max(0,t.hp-PUNCH_DAMAGE);
-          shooterSendTo(t.id,{type:'selfHit',hp:t.hp,attacker:p.name});
+          let dmg = punchDmg;
+          if(t.upgrades.shield>0){const a=Math.min(t.upgrades.shield,dmg);dmg-=a;t.upgrades.shield=Math.max(0,t.upgrades.shield-a);}
+          t.hp=Math.max(0,t.hp-dmg); t.lastHitTime=Date.now();
+          shooterSendTo(t.id,{type:'selfHit',hp:t.hp,attacker:p.name,shieldHp:t.upgrades.shield});
           shooterBroadcast({type:'playerHp',id:t.id,hp:t.hp});
           shooterSendTo(id,{type:'hitConfirm'});
           if(t.hp<=0) killShooterPlayer(t,p.name);
@@ -403,6 +543,7 @@ wss.on('connection', ws => {
         const now2=Date.now(); if(now2-p.lastShot<gun.fireRate) break;
         p.lastShot=now2; p.ammo--;
         shooterSendTo(id,{type:'ammoUpdate',ammo:p.ammo});
+        const dmgMult = 1.0 + (p.upgrades.dmg_boost||0) * 0.30;
         const pitch=p.pitch||0;
         const sdx=-Math.sin(p.rotY)*Math.cos(pitch), sdy=-Math.sin(pitch), sdz=-Math.cos(p.rotY)*Math.cos(pitch);
         for(let pel=0;pel<gun.pellets;pel++){
@@ -419,9 +560,19 @@ wss.on('connection', ws => {
             hitZd=dist; hitZ=z;
           });
           if(hitZ){
-            hitZ.hp-=gun.damage; shooterSendTo(id,{type:'hitConfirm'});
-            if(hitZ.hp<=0){hitZ.alive=false;shooterBroadcast({type:'zombieDied',id:hitZ.id,x:hitZ.x,z:hitZ.z,gore:true});scheduleZRespawn(hitZ);}
-            else shooterBroadcast({type:'zombieHit',id:hitZ.id,hp:hitZ.hp,maxHp:hitZ.maxHp});
+            const dmg = Math.round(gun.damage * dmgMult);
+            hitZ.hp -= dmg;
+            shooterSendTo(id,{type:'hitConfirm'});
+            if(hitZ.hp<=0){
+              hitZ.alive=false;
+              p.balance += hitZ.typeDef.reward; p.zombiesKilled++;
+              shooterSendTo(id,{type:'balanceUpdate',balance:p.balance,kills:p.zombiesKilled});
+              if(p.sub) dbQuery('UPDATE users SET balance=balance+$1, zombies_killed=COALESCE(zombies_killed,0)+1 WHERE auth_sub=$2',[hitZ.typeDef.reward,p.sub]).catch(()=>{});
+              shooterBroadcast({type:'zombieDied',id:hitZ.id,x:hitZ.x,z:hitZ.z,gore:true});
+              scheduleZRespawn(hitZ);
+            } else {
+              shooterBroadcast({type:'zombieHit',id:hitZ.id,hp:hitZ.hp,maxHp:hitZ.maxHp});
+            }
             continue;
           }
           let hitP=null,hitPd=gun.range;
@@ -435,14 +586,52 @@ wss.on('connection', ws => {
             hitPd=dist; hitP=t;
           });
           if(hitP){
-            hitP.hp=Math.max(0,hitP.hp-gun.damage);
-            shooterSendTo(hitP.id,{type:'selfHit',hp:hitP.hp,attacker:p.name});
+            let dmg = Math.round(gun.damage * dmgMult);
+            if(hitP.upgrades.shield>0){const a=Math.min(hitP.upgrades.shield,dmg);dmg-=a;hitP.upgrades.shield=Math.max(0,hitP.upgrades.shield-a);}
+            hitP.hp=Math.max(0,hitP.hp-dmg); hitP.lastHitTime=now2;
+            shooterSendTo(hitP.id,{type:'selfHit',hp:hitP.hp,attacker:p.name,shieldHp:hitP.upgrades.shield});
             shooterBroadcast({type:'playerHp',id:hitP.id,hp:hitP.hp});
             shooterSendTo(id,{type:'hitConfirm'});
             if(hitP.hp<=0) killShooterPlayer(hitP,p.name);
           }
         }
         shooterBroadcast({type:'gunshot',id,x:p.x,y:p.y,z:p.z,rotY:p.rotY,pitch:p.pitch,gunType:p.gunType});
+        break;
+      }
+      case 'buyUpgrade': {
+        const uid = msg.upgradeId;
+        const def = UPGRADE_DEFS[uid];
+        if (!def) { shooterSendTo(id,{type:'upgradeResult',ok:false,error:'Unknown upgrade'}); break; }
+        // Consumables — flat cost, always available
+        if (uid === 'ammo_refill') {
+          if (p.balance < def.cost) { shooterSendTo(id,{type:'upgradeResult',ok:false,error:'Need $'+def.cost}); break; }
+          if (!p.hasGun) { shooterSendTo(id,{type:'upgradeResult',ok:false,error:'No gun equipped'}); break; }
+          p.balance -= def.cost;
+          p.ammo = GUN_DEFS[p.gunType]?.maxAmmo || 12;
+          shooterSendTo(id,{type:'upgradeResult',ok:true,upgradeId:uid,balance:p.balance});
+          shooterSendTo(id,{type:'ammoUpdate',ammo:p.ammo,gunType:p.gunType});
+          if(p.sub) dbQuery('UPDATE users SET balance=$1 WHERE auth_sub=$2',[p.balance,p.sub]).catch(()=>{});
+          break;
+        }
+        if (uid === 'shield') {
+          if (p.balance < def.cost) { shooterSendTo(id,{type:'upgradeResult',ok:false,error:'Need $'+def.cost}); break; }
+          p.balance -= def.cost;
+          p.upgrades.shield = (p.upgrades.shield||0) + 80;
+          shooterSendTo(id,{type:'upgradeResult',ok:true,upgradeId:uid,balance:p.balance,shieldHp:p.upgrades.shield});
+          if(p.sub) dbQuery('UPDATE users SET balance=$1 WHERE auth_sub=$2',[p.balance,p.sub]).catch(()=>{});
+          break;
+        }
+        // Leveled upgrades
+        const curLevel = p.upgrades[uid]||0;
+        if (curLevel >= def.maxLevel) { shooterSendTo(id,{type:'upgradeResult',ok:false,error:'Max level reached'}); break; }
+        const levelCost = def.cost * (curLevel + 1);
+        if (p.balance < levelCost) { shooterSendTo(id,{type:'upgradeResult',ok:false,error:'Need $'+levelCost}); break; }
+        p.balance -= levelCost;
+        p.upgrades[uid] = curLevel + 1;
+        if (uid === 'extra_hp') p.maxHp = PLAYER_HP + p.upgrades.extra_hp * 50;
+        if (uid === 'fast_regen') p.upgrades.fast_regen = true;
+        shooterSendTo(id,{type:'upgradeResult',ok:true,upgradeId:uid,level:p.upgrades[uid],balance:p.balance,maxHp:p.maxHp,shieldHp:p.upgrades.shield});
+        if(p.sub) dbQuery('UPDATE users SET balance=$1 WHERE auth_sub=$2',[p.balance,p.sub]).catch(()=>{});
         break;
       }
       case 'pickup': {
@@ -497,7 +686,7 @@ wss.on('connection', ws => {
         if(p.alive) break;
         p.hp=p.maxHp; p.alive=true; p.hasGun=false; p.gunType=null; p.ammo=0;
         p.x=(Math.random()-0.5)*20; p.z=(Math.random()-0.5)*20;
-        shooterSendTo(id,{type:'respawned',x:p.x,z:p.z});
+        shooterSendTo(id,{type:'respawned',x:p.x,z:p.z,balance:p.balance,kills:p.zombiesKilled,maxHp:p.maxHp,shieldHp:p.upgrades.shield});
         shooterBroadcast({type:'playerRespawn',id,x:p.x,z:p.z,hp:p.hp});
         break;
       }
@@ -613,36 +802,7 @@ io.on('connection', async socket => {
   socket.on('disconnect',()=>{leaveRoom(socket);leavePokerRoom(socket);});
 });
 
-// ── Update game.js WebSocket URL to use /ws path ─
-// (game.js connects to `${proto}//${location.host}` — we need /ws)
-// This middleware patches the WS URL inline so game.js still works
-app.get('/game.js', (req, res) => {
-  const filePath = path.join(PUBLIC, 'game.js');
-  const fs = require('fs');
-  let code = fs.readFileSync(filePath, 'utf8');
-  // Replace the WS connection line to use /ws path
-  code = code.replace(
-    /new WebSocket\(`\$\{proto\}\/\/\$\{location\.host\}`\)/,
-    'new WebSocket(`${proto}//${location.host}/ws`)'
-  );
-  res.type('application/javascript').send(code);
-});
-
 // ── Start ─────────────────────────────────────
-// We also need a game.html that loads the shooter
-const fs = require('fs');
-if (!fs.existsSync(path.join(PUBLIC, 'game.html'))) {
-  // If game.html doesn't exist, rename/copy the shooter index
-  // The shooter's index.html (from the FPS build) should be at public/game.html
-  // Copy it from the current index if needed
-  try {
-    const shooterIndex = path.join(PUBLIC, 'shooter_index.html');
-    if (fs.existsSync(shooterIndex)) {
-      fs.copyFileSync(shooterIndex, path.join(PUBLIC, 'game.html'));
-    }
-  } catch(e) {}
-}
-
 initDB().then(() => {
   server.listen(PORT, () => {
     console.log(`
