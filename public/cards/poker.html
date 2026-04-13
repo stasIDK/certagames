@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Poker — Certa Games</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060d06;--felt:#0d2010;--felt2:#0a1a0d;
+  --gold:#c9a84c;--gold2:#e2c97e;--gold3:rgba(201,168,76,0.12);
+  --red:#c0392b;--red2:#e74c3c;--green:#27ae60;--green2:#2ecc71;
+  --border:rgba(201,168,76,0.18);--text:rgba(255,255,255,0.88);--muted:rgba(255,255,255,0.3);
+  --card-bg:#fdf6e3;--card-w:72px;--card-h:100px;
+}
+html,body{min-height:100vh;background:var(--bg);font-family:'DM Mono',monospace;color:var(--text);overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse 100% 60% at 50% 100%,rgba(13,32,16,.9),transparent),
+    radial-gradient(ellipse 60% 40% at 20% 20%,rgba(201,168,76,.04),transparent);
+  pointer-events:none;z-index:0}
+.screen{display:none;position:fixed;inset:0;z-index:10;overflow-y:auto}
+.screen.active{display:flex;flex-direction:column}
+/* Loading */
+#screen-loading{align-items:center;justify-content:center;background:var(--bg)}
+.loading-logo{font-family:'Playfair Display',serif;font-style:italic;font-size:52px;color:var(--gold2);text-align:center;animation:pulse 2s infinite}
+.loading-sub{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,168,76,.3);margin-top:12px;text-align:center}
+@keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}
+/* Header */
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:rgba(6,13,6,.92);backdrop-filter:blur(8px);position:sticky;top:0;z-index:100;flex-shrink:0}
+.top-bar-logo{font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--gold2);display:flex;align-items:center;gap:10px}
+.back-link{color:rgba(201,168,76,.45);font-size:20px;text-decoration:none;transition:color .15s;line-height:1}
+.back-link:hover{color:var(--gold2)}
+.user-info{display:flex;align-items:center;gap:10px}
+.balance-chip{background:var(--gold3);border:1px solid var(--border);border-radius:20px;padding:5px 14px;font-size:12px;color:var(--gold2);letter-spacing:.04em}
+.user-name-small{font-size:11px;color:rgba(255,255,255,.5);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-logout{background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.3);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:4px;cursor:pointer;transition:all .15s}
+.btn-logout:hover{border-color:rgba(255,255,255,.3);color:rgba(255,255,255,.7)}
+/* Lobby */
+#screen-lobby{background:var(--bg)}
+.lobby-content{flex:1;padding:28px 24px 60px;max-width:900px;width:100%;margin:0 auto}
+.lobby-hero{text-align:center;margin-bottom:40px;padding-top:20px}
+.lobby-title{font-family:'Playfair Display',serif;font-style:italic;font-size:clamp(36px,7vw,64px);color:var(--gold2);line-height:1;margin-bottom:8px;text-shadow:0 0 40px rgba(201,168,76,.2)}
+.lobby-tagline{font-size:11px;letter-spacing:.25em;text-transform:uppercase;color:rgba(201,168,76,.35)}
+.section-title{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(201,168,76,.4);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.rooms-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.btn{background:rgba(201,168,76,.08);border:1px solid var(--border);color:var(--gold);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:8px 18px;border-radius:6px;cursor:pointer;transition:all .2s}
+.btn:hover{background:rgba(201,168,76,.18);border-color:var(--gold);color:var(--gold2)}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--gold);border-color:var(--gold);color:#060d06;font-weight:500}
+.btn-primary:hover{background:var(--gold2);border-color:var(--gold2)}
+.btn-danger{border-color:rgba(192,57,43,.4);color:rgba(192,57,43,.7)}
+.btn-danger:hover{background:rgba(192,57,43,.12);border-color:var(--red);color:var(--red2)}
+.btn-green{background:var(--green);border-color:var(--green);color:#fff;font-weight:500}
+.btn-green:hover{background:var(--green2);border-color:var(--green2)}
+.rooms-list{display:flex;flex-direction:column;gap:10px;margin-bottom:32px}
+.room-card{display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,rgba(255,255,255,.03),rgba(255,255,255,.01));border:1px solid var(--border);border-radius:12px;padding:16px 20px;transition:border-color .2s,background .2s;cursor:pointer}
+.room-card:hover{border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.04)}
+.room-card-icon{font-size:28px;flex-shrink:0}
+.room-card-info{flex:1}
+.room-card-name{font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--gold2);margin-bottom:4px}
+.room-card-meta{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.room-card-bet{font-size:18px;color:var(--gold);font-family:'Playfair Display',serif}
+.room-empty{text-align:center;padding:40px;color:var(--muted);font-size:13px;border:1px dashed rgba(255,255,255,.08);border-radius:12px}
+.tv-badge{font-size:9px;padding:2px 7px;border-radius:10px;background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.4);color:#e74c3c;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;margin-left:6px}
+.tabs{display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.tab{padding:10px 20px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Mono',monospace}
+.tab.active{color:var(--gold2);border-bottom-color:var(--gold)}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.input{background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:12px;padding:9px 14px;border-radius:6px;outline:none;transition:border-color .15s}
+.input:focus{border-color:var(--gold)}
+.input::placeholder{color:rgba(255,255,255,.2)}
+.input-lg{width:100%;padding:11px 16px;font-size:13px}
+/* Modals */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:20px}
+.modal-overlay.show{display:flex}
+.modal{background:linear-gradient(160deg,#111a11,#0a120a);border:1px solid rgba(201,168,76,.25);border-radius:16px;padding:36px 32px;width:100%;max-width:480px;animation:modalIn .3s cubic-bezier(.34,1.56,.64,1)}
+@keyframes modalIn{from{transform:scale(.88) translateY(20px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+.modal-title{font-family:'Playfair Display',serif;font-style:italic;font-size:26px;color:var(--gold2);margin-bottom:24px}
+.modal-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.modal-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(201,168,76,.4)}
+.modal-actions{display:flex;gap:10px;margin-top:24px;justify-content:flex-end}
+.modal-close{position:absolute;top:16px;right:20px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px}
+.modal-close:hover{color:var(--text)}
+.range-row{display:flex;align-items:center;gap:12px}
+.range-row input[type=range]{flex:1;accent-color:var(--gold)}
+.range-val{min-width:60px;text-align:right;color:var(--gold2);font-size:14px}
+.helper{font-size:11px;color:var(--muted);margin-top:4px}
+.error-msg{color:var(--red2);font-size:12px;margin-top:8px}
+/* Toggle switch */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0}
+.toggle-label{font-size:12px;color:var(--text)}
+.toggle{position:relative;width:42px;height:24px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:rgba(255,255,255,.1);border:1px solid var(--border);border-radius:24px;cursor:pointer;transition:all .2s}
+.toggle-slider::before{content:'';position:absolute;height:18px;width:18px;left:2px;top:2px;background:var(--muted);border-radius:50%;transition:all .2s}
+.toggle input:checked+.toggle-slider{background:var(--gold);border-color:var(--gold)}
+.toggle input:checked+.toggle-slider::before{transform:translateX(18px);background:#fff}
+.tv-mode-hint{font-size:10px;color:rgba(231,76,60,.7);margin-top:4px;letter-spacing:.04em}
+/* Room waiting */
+#screen-room{background:var(--bg)}
+.room-waiting{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px}
+.room-waiting-title{font-family:'Playfair Display',serif;font-style:italic;font-size:36px;color:var(--gold2);margin-bottom:8px}
+.room-waiting-id{font-size:11px;letter-spacing:.2em;color:rgba(201,168,76,.35);margin-bottom:40px}
+.seats-grid{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-bottom:40px}
+.seat{width:120px;background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.01));border:1px solid var(--border);border-radius:14px;padding:20px 14px;text-align:center;transition:border-color .2s}
+.seat.occupied{border-color:rgba(201,168,76,.3)}.seat.empty{border-style:dashed;opacity:.5}
+.seat-avatar{width:48px;height:48px;border-radius:50%;background:var(--gold3);border:1px solid var(--border);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.seat-name{font-size:12px;color:var(--gold2);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat-tag{font-size:10px;color:var(--muted);letter-spacing:.06em}
+.bot-controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:20px}
+.room-info-row{display:flex;gap:24px;margin-bottom:32px;font-size:12px;color:var(--muted)}
+.room-info-item{text-align:center}
+.room-info-val{font-size:18px;color:var(--gold2);font-family:'Playfair Display',serif;margin-bottom:2px}
+.tv-host-badge{background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.3);border-radius:12px;padding:10px 20px;font-size:12px;color:#e74c3c;text-align:center;margin-bottom:20px;letter-spacing:.04em}
+/* ── GAME SCREEN ──────────────────────────────── */
+#screen-game { background: var(--bg); overflow: hidden; }
+.game-wrap   { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── TABLE ── */
+.poker-stage {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 0 0 8px; overflow: hidden; position: relative;
+}
+.poker-table-outer {
+  width: min(96vw, 600px); height: min(42vw, 260px);
+  background: radial-gradient(ellipse 90% 80% at 50% 50%,#1d4a26,#0d2010 70%,#050b05);
+  border: 6px solid #150c02;
+  border-radius: 50%;
+  position: relative;
+  box-shadow:
+    inset 0 0 60px rgba(0,0,0,.55),
+    inset 0 0 0 2px rgba(201,168,76,.07),
+    0 8px 40px rgba(0,0,0,.7);
+  flex-shrink: 0;
+}
+/* Community zone — centered on table */
+.community-zone {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -55%);
+  display: flex; gap: 7px; align-items: center; z-index: 10;
+}
+/* Pot — below community */
+.pot-zone {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, 30%);
+  text-align: center; z-index: 11; white-space: nowrap;
+}
+.pot-amount-label {
+  font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+  color: rgba(255,255,255,.3); margin-bottom: 2px;
+}
+.pot-amount-val {
+  font-family: 'Playfair Display', serif;
+  font-size: 18px; color: var(--gold2);
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), opacity .2s;
+}
+.pot-amount-val.pop { animation: potPop .4s cubic-bezier(.34,1.56,.64,1); }
+@keyframes potPop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.25) translateY(-3px); }
+  100% { transform: scale(1); }
+}
+/* Phase badge */
+.phase-badge {
+  position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+  font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+  color: rgba(201,168,76,.5); pointer-events: none; white-space: nowrap;
+  z-index: 15;
+}
+
+/* ── OPPONENT SEATS (positioned around top arc of table) ── */
+.opp-seats-wrap {
+  width: min(96vw, 600px);
+  position: relative;
+  height: 80px;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+.opp-seat {
+  position: absolute;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  transition: opacity .4s;
+}
+.opp-seat.folded { opacity: .35; }
+.opp-seat-inner {
+  background: rgba(0,0,0,.65);
+  border: 1px solid rgba(201,168,76,.15);
+  border-radius: 10px;
+  padding: 5px 9px 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transition: border-color .4s, box-shadow .4s;
+  min-width: 68px;
+}
+.opp-seat.is-acting .opp-seat-inner {
+  border-color: rgba(46,204,113,.65);
+  box-shadow: 0 0 14px rgba(39,174,96,.35);
+  animation: actGlow 1.4s infinite;
+}
+.opp-seat.winner .opp-seat-inner {
+  border-color: var(--gold);
+  box-shadow: 0 0 18px rgba(201,168,76,.5);
+}
+@keyframes actGlow {
+  0%,100% { box-shadow: 0 0 8px rgba(39,174,96,.25); }
+  50%      { box-shadow: 0 0 22px rgba(39,174,96,.6); }
+}
+.opp-cards { display: flex; gap: 3px; margin-bottom: 1px; }
+.opp-card-back {
+  width: 18px; height: 26px;
+  background: linear-gradient(145deg,#1a3a7a,#0e2456);
+  border: 1px solid rgba(255,255,255,.15); border-radius: 3px;
+  flex-shrink: 0;
+}
+.opp-card-face {
+  width: 18px; height: 26px; border-radius: 3px;
+  background: #fdf6e3; border: 1px solid rgba(0,0,0,.12);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; font-size: 7px; font-weight: 700;
+  flex-shrink: 0;
+}
+.opp-card-face.red { color: #c0392b; }
+.opp-card-face.black { color: #1a1a1a; }
+.opp-name {
+  font-size: 10px; color: rgba(255,255,255,.7);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 72px; text-align: center;
+}
+.opp-seat.is-acting .opp-name { color: var(--green2); }
+.opp-seat.winner .opp-name { color: var(--gold2); }
+.opp-chips { font-size: 10px; color: var(--gold); font-family: 'Playfair Display', serif; }
+.opp-bet { font-size: 9px; color: rgba(255,255,255,.4); }
+.opp-badge {
+  font-size: 7px; padding: 1px 5px; border-radius: 5px; border: 1px solid;
+  letter-spacing: .04em; text-transform: uppercase; white-space: nowrap;
+}
+.badge-d  { background: rgba(201,168,76,.1);  border-color: var(--gold);  color: var(--gold); }
+.badge-sb { background: rgba(52,152,219,.1);  border-color: #3498db; color: #3498db; }
+.badge-bb { background: rgba(155,89,182,.1);  border-color: #9b59b6; color: #9b59b6; }
+.badge-fo { background: rgba(192,57,43,.08); border-color: var(--red); color: var(--red2); opacity: .7; }
+.opp-hand-name {
+  font-size: 8px; color: var(--gold); font-style: italic;
+  font-family: 'Playfair Display', serif; text-align: center;
+  max-width: 80px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── MY CARDS ── */
+.my-cards-zone {
+  display: flex; flex-direction: column; align-items: center;
+  flex-shrink: 0; padding: 6px 0 4px;
+}
+.my-cards-row {
+  display: flex; gap: 14px; align-items: flex-end;
+}
+.my-card {
+  width: 72px; height: 100px;
+  background: #fdf6e3; border: 1px solid rgba(0,0,0,.15);
+  border-radius: 9px; position: relative;
+  box-shadow: 2px 4px 16px rgba(0,0,0,.5);
+  flex-shrink: 0; cursor: default; user-select: none;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .3s;
+}
+.my-card:hover { transform: translateY(-8px); box-shadow: 2px 8px 24px rgba(0,0,0,.6); }
+.my-card.win-glow {
+  box-shadow: 0 0 0 3px var(--gold), 2px 4px 24px rgba(201,168,76,.7);
+  animation: cardWinPulse 1.8s infinite;
+}
+@keyframes cardWinPulse {
+  0%,100% { box-shadow: 0 0 0 3px var(--gold), 0 0 20px rgba(201,168,76,.6); }
+  50%      { box-shadow: 0 0 0 3px var(--gold2), 0 0 36px rgba(201,168,76,.9); }
+}
+.my-card-rank { position: absolute; top: 5px; left: 6px; font-size: 15px; font-weight: 700; line-height: 1; }
+.my-card-suit { position: absolute; top: 22px; left: 7px; font-size: 11px; }
+.my-card-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 28px; }
+.my-card-rank-br { position: absolute; bottom: 5px; right: 6px; font-size: 15px; font-weight: 700; line-height: 1; transform: rotate(180deg); }
+.my-card-suit-br { position: absolute; bottom: 22px; right: 7px; font-size: 11px; transform: rotate(180deg); }
+.my-card.red .my-card-rank, .my-card.red .my-card-suit,
+.my-card.red .my-card-center, .my-card.red .my-card-rank-br,
+.my-card.red .my-card-suit-br { color: #c0392b; }
+.my-card.black .my-card-rank, .my-card.black .my-card-suit,
+.my-card.black .my-card-center, .my-card.black .my-card-rank-br,
+.my-card.black .my-card-suit-br { color: #1a1a1a; }
+.my-hand-name-label {
+  font-size: 12px; color: var(--gold); font-style: italic;
+  font-family: 'Playfair Display', serif;
+  margin-top: 5px; min-height: 18px; text-align: center;
+  transition: opacity .3s;
+}
+
+/* Community cards */
+.comm-card {
+  width: 52px; height: 72px;
+  background: #fdf6e3; border: 1px solid rgba(0,0,0,.12);
+  border-radius: 6px; position: relative; flex-shrink: 0;
+  box-shadow: 1px 2px 8px rgba(0,0,0,.5);
+}
+.comm-card-slot {
+  width: 52px; height: 72px; border-radius: 6px;
+  border: 1px dashed rgba(255,255,255,.08);
+  background: rgba(0,0,0,.12); flex-shrink: 0;
+}
+.comm-card .c-rank { position: absolute; top: 3px; left: 4px; font-size: 11px; font-weight: 700; line-height: 1; }
+.comm-card .c-suit { position: absolute; top: 15px; left: 5px; font-size: 8px; }
+.comm-card .c-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 22px; }
+.comm-card .c-rank-br { position: absolute; bottom: 3px; right: 4px; font-size: 11px; font-weight: 700; line-height: 1; transform: rotate(180deg); }
+.comm-card .c-suit-br { position: absolute; bottom: 15px; right: 5px; font-size: 8px; transform: rotate(180deg); }
+.comm-card.red .c-rank, .comm-card.red .c-suit,
+.comm-card.red .c-center, .comm-card.red .c-rank-br,
+.comm-card.red .c-suit-br { color: #c0392b; }
+.comm-card.black .c-rank, .comm-card.black .c-suit,
+.comm-card.black .c-center, .comm-card.black .c-rank-br,
+.comm-card.black .c-suit-br { color: #1a1a1a; }
+.comm-card.win-glow {
+  box-shadow: 0 0 0 2px var(--gold), 0 0 14px rgba(201,168,76,.7);
+}
+
+/* ── CARD ANIMATIONS ── */
+@keyframes dealFromDeck {
+  0%   { transform: translate(var(--dx), var(--dy)) scale(.6) rotate(var(--rot)); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: translate(0,0) scale(1) rotate(0deg); opacity: 1; }
+}
+.card-dealing { animation: dealFromDeck .55s cubic-bezier(.22,1,.36,1) both; }
+
+@keyframes commCardIn {
+  from { transform: translateY(-20px) scale(.8); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.comm-card-in { animation: commCardIn .45s cubic-bezier(.22,1,.36,1) both; }
+
+@keyframes flipReveal {
+  0%   { transform: scaleX(0); }
+  50%  { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+.card-flip-in { animation: flipReveal .4s ease both; }
+
+/* ── FLYING CHIP ANIMATION ── */
+.flying-chip {
+  position: fixed; z-index: 999; pointer-events: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px dashed rgba(255,255,255,.4);
+  transition: none;
+}
+@keyframes chipFly {
+  0%   { transform: translate(0,0) scale(1); opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(.5); opacity: 0; }
+}
+.chip-flying { animation: chipFly .6s cubic-bezier(.4,0,.2,1) forwards; }
+
+/* ── ACTIONS ── */
+.actions-zone {
+  flex-shrink: 0;
+  padding: 8px 12px 12px;
+  background: rgba(0,0,0,.55);
+  border-top: 1px solid rgba(255,255,255,.05);
+}
+.action-status {
+  font-size: 11px; color: rgba(255,255,255,.35);
+  text-align: center; margin-bottom: 8px; min-height: 16px;
+  letter-spacing: .04em;
+  transition: color .3s;
+}
+.action-status.my-turn-status { color: var(--gold2); }
+.action-btns {
+  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;
+}
+.raise-slider-row {
+  display: flex; gap: 8px; align-items: center;
+  margin-top: 8px; padding: 0 4px;
+}
+.raise-slider-row input[type=range] {
+  flex: 1; accent-color: var(--gold);
+}
+.raise-val-label {
+  min-width: 52px; text-align: right;
+  font-size: 12px; color: var(--gold2);
+}
+
+/* ── ACTION BTN APPEAR ── */
+@keyframes btnIn {
+  from { transform: scale(.85) translateY(4px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+.btn-in { animation: btnIn .22s cubic-bezier(.34,1.56,.64,1) both; }
+
+/* ── WINNER FLASH ── */
+@keyframes winnerFlash {
+  0%,100% { background: transparent; }
+  50% { background: rgba(201,168,76,.08); }
+}
+.winner-flash { animation: winnerFlash .7s ease 2; }
+
+/* ── MOBILE ── */
+@media(max-width:600px){
+  :root { --card-w:56px; --card-h:80px; }
+  .top-bar { padding:8px 10px; }
+  .top-bar-logo { font-size:16px; }
+  .lobby-content { padding:12px 12px 60px; }
+  .modal { padding:20px 16px; }
+  .btn { padding:7px 12px; font-size:10px; }
+  .my-card { width:62px; height:88px; }
+  .poker-table-outer { height: min(40vw, 240px); }
+}
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div class="screen active" id="screen-loading">
+  <div class="loading-logo">♠ Poker</div>
+  <div class="loading-sub">Texas Hold'em · Loading…</div>
+</div>
+
+<!-- Lobby -->
+<div class="screen" id="screen-lobby">
+  <div class="top-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/" class="back-link">←</a>
+      <div class="top-bar-logo">♠ Poker</div>
+    </div>
+    <div class="user-info">
+      <div class="balance-chip" id="balance-display">$—</div>
+      <span class="user-name-small" id="user-name-display"></span>
+      <button class="btn-logout" onclick="doLogout()">Out</button>
+    </div>
+  </div>
+  <div class="lobby-content">
+    <div class="lobby-hero">
+      <div class="lobby-title">Texas Hold'em</div>
+      <div class="lobby-tagline">Certa Games · up to 6 players</div>
+    </div>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('rooms',event)">Rooms</button>
+      <button class="tab" onclick="switchTab('leaderboard',event)">Leaderboard</button>
+    </div>
+    <div class="tab-panel active" id="tab-rooms">
+      <div class="rooms-header">
+        <div class="section-title" style="margin:0;padding:0;border:none">Active Rooms</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="refreshRooms()">↻ Refresh</button>
+          <button class="btn btn-primary" onclick="showCreateRoom()">+ Create Room</button>
+        </div>
+      </div>
+      <div class="rooms-list" id="rooms-list"><div class="room-empty">No open rooms. Create one!</div></div>
+    </div>
+    <div class="tab-panel" id="tab-leaderboard">
+      <table class="lb-table">
+        <thead><tr><th style="width:40px">#</th><th>Player</th><th>Balance</th></tr></thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Room waiting -->
+<div class="screen" id="screen-room">
+  <div class="top-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="#" class="back-link" onclick="leaveRoom();return false">←</a>
+      <div class="top-bar-logo" id="room-title-bar">Room</div>
+    </div>
+    <div class="user-info"><div class="balance-chip" id="room-balance-display">$—</div></div>
+  </div>
+  <div class="room-waiting">
+    <div class="room-waiting-title" id="rw-name">Waiting…</div>
+    <div class="room-waiting-id" id="rw-id"></div>
+    <div id="tv-host-badge" style="display:none" class="tv-host-badge">📺 TV Mode — You are the host/spectator. Start the game when players are ready.</div>
+    <div class="room-info-row">
+      <div class="room-info-item"><div class="room-info-val" id="rw-bet">—</div><div>Buy-in</div></div>
+      <div class="room-info-item"><div class="room-info-val" id="rw-bb">—</div><div>Big Blind</div></div>
+      <div class="room-info-item"><div class="room-info-val" id="rw-max">—</div><div>Max Players</div></div>
+    </div>
+    <div class="seats-grid" id="seats-grid"></div>
+    <div class="bot-controls" id="bot-controls" style="display:none">
+      <span style="font-size:11px;color:var(--muted);align-self:center">Add bot:</span>
+      <button class="btn" onclick="addBot('easy')">Easy</button>
+      <button class="btn" onclick="addBot('medium')">Medium</button>
+      <button class="btn" onclick="addBot('hard')">Hard</button>
+    </div>
+    <div style="display:flex;gap:10px" id="room-actions">
+      <button class="btn btn-danger" onclick="leaveRoom()">Leave</button>
+      <button class="btn btn-primary" id="btn-start" style="display:none" onclick="startGame()">Start Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game screen -->
+<div class="screen" id="screen-game">
+  <div class="top-bar" style="z-index:30">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="#" class="back-link" onclick="tryLeaveGame();return false">←</a>
+      <div class="top-bar-logo">♠ Poker</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="balance-chip" id="game-balance-display">$—</div>
+    </div>
+  </div>
+  <div class="game-wrap">
+    <div id="player-view" class="player-view active">
+      <!-- Opponent seats row (above table) -->
+      <div class="opp-seats-wrap" id="opp-seats-wrap"></div>
+
+      <!-- Felt table with community + pot -->
+      <div class="poker-stage">
+        <div class="poker-table-outer" id="poker-table-outer">
+          <div class="phase-badge" id="phase-badge">Pre-flop</div>
+          <div class="community-zone" id="community-zone"></div>
+          <div class="pot-zone" id="pot-zone">
+            <div class="pot-amount-label" id="pot-label" style="display:none">Pot</div>
+            <div class="pot-amount-val" id="pot-amount" data-pot="0">$0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- My hole cards -->
+      <div class="my-cards-zone" id="my-cards-zone">
+        <div class="my-cards-row" id="my-cards-row"></div>
+        <div class="my-hand-name-label" id="my-hand-name"></div>
+      </div>
+
+      <!-- My info strip -->
+      <div style="display:flex;justify-content:center;gap:24px;padding:2px 16px 4px;font-size:11px;color:var(--muted)">
+        <span>Chips: <span id="my-chips-val" style="color:var(--gold2)">—</span></span>
+        <span id="to-call-row" style="display:none">To call: <span id="to-call-val" style="color:var(--red2)">—</span></span>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions-zone">
+        <div class="action-status" id="action-status">Waiting…</div>
+        <div class="action-btns" id="action-btns"></div>
+        <div class="raise-slider-row" id="raise-row" style="display:none">
+          <input type="range" id="raise-slider" min="1" max="100" step="1" value="1">
+          <div class="raise-val-label" id="raise-val-label">$1</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Room Modal -->
+<div class="modal-overlay" id="modal-create">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-create')">✕</button>
+    <div class="modal-title">Create Poker Room</div>
+    <div class="modal-row">
+      <div class="modal-label">Room Name</div>
+      <input class="input input-lg" id="cr-name" placeholder="e.g. Stas's Table" maxlength="40">
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">Buy-in / Starting Stack</div>
+      <div class="range-row">
+        <input type="range" id="cr-bet" min="10" max="1000" step="10" value="100" oninput="updateCreateUI()">
+        <span class="range-val" id="cr-bet-val">$100</span>
+      </div>
+      <div class="helper" id="cr-blind-hint">Big blind: $2 · Small blind: $1</div>
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">Max Players</div>
+      <div class="range-row">
+        <input type="range" id="cr-max" min="2" max="6" step="1" value="6" oninput="updateCreateUI()">
+        <span class="range-val" id="cr-max-val">6</span>
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">Password (optional)</div>
+      <input class="input input-lg" id="cr-pass" placeholder="Leave empty for public" maxlength="30">
+    </div>
+    <div class="modal-row">
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">📺 TV Mode</div>
+          <div class="tv-mode-hint" id="cr-tv-hint" style="display:none">You host the table on a TV — players join from their phones. You are not a player.</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="cr-tv" onchange="updateCreateUI()">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="error-msg" id="cr-error"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-create')">Cancel</button>
+      <button class="btn btn-primary" onclick="createRoom()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Password modal -->
+<div class="modal-overlay" id="modal-pass">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-pass')">✕</button>
+    <div class="modal-title">Enter Password</div>
+    <div class="modal-row">
+      <input class="input input-lg" id="pass-input" placeholder="Room password" type="password">
+    </div>
+    <div class="error-msg" id="pass-error"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-pass')">Cancel</button>
+      <button class="btn btn-primary" onclick="joinWithPassword()">Join</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leave game warning -->
+<div class="modal-overlay" id="modal-leave-game">
+  <div class="modal" style="position:relative;text-align:center;padding:36px 28px">
+    <div style="font-size:44px;margin-bottom:12px">⚠️</div>
+    <div class="modal-title">Leave the game?</div>
+    <p style="color:var(--muted);font-size:13px;line-height:1.7;margin-bottom:24px">Your remaining chips will be returned to your balance.</p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn" onclick="closeModal('modal-leave-game')">Stay In</button>
+      <button class="btn btn-danger" onclick="confirmLeaveGame()">Leave</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game over -->
+<div class="gameover-overlay" id="gameover-overlay">
+  <div class="gameover-card">
+    <div class="gameover-emoji" id="go-emoji">🃏</div>
+    <div class="gameover-title" id="go-title">Game Over</div>
+    <div class="gameover-sub" id="go-sub"></div>
+    <div id="go-rankings" style="margin:16px 0"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn" onclick="backToLobby()">Back to Lobby</button>
+    </div>
+  </div>
+</div>
+
+
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────
+let myToken=sessionStorage.getItem('auth_token');
+let myUser=null,socket=null;
+let currentRoom=null,gameData=null,myRole='player'; // role: 'player'|'tv'
+let joinTarget=null,raiseAmount=0;
+let turnTimer=null,turnTimerEnd=null;
+
+// ─── INIT ─────────────────────────────────────
+async function init(){
+  myToken=sessionStorage.getItem('auth_token');
+  if(!myToken){window.location.href='/';return;}
+  try{
+    const p=JSON.parse(atob(myToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    if(p.exp&&p.exp<Math.floor(Date.now()/1000)){sessionStorage.removeItem('auth_token');window.location.href='/';return;}
+  }catch(e){sessionStorage.removeItem('auth_token');window.location.href='/';return;}
+  const me=await apiFetch('/api/me');
+  if(me.error){sessionStorage.removeItem('auth_token');window.location.href='/';return;}
+  myUser=me;
+  updateBalanceDisplays();
+  document.getElementById('user-name-display').textContent=myUser?.name||'';
+  connectSocket();
+  showScreen('lobby');
+  refreshRooms();
+  loadLeaderboard();
+}
+
+async function apiFetch(url,opts={}){
+  const res=await fetch(url,{...opts,headers:{'Content-Type':'application/json','Authorization':'Bearer '+myToken,...(opts.headers||{})}});
+  return res.json();
+}
+
+function doLogout(){
+  sessionStorage.removeItem('auth_token');
+  window.location.href='/';
+}
+
+function updateBalanceDisplays(){
+  const t='$'+(myUser?.balance??'—');
+  ['balance-display','room-balance-display','game-balance-display'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.textContent=t;
+  });
+}
+
+// ─── SOCKET ───────────────────────────────────
+function connectSocket(){
+  socket=io({auth:{token:myToken}});
+  socket.on('connect',()=>{
+    if(socket.data?.pokerRoomId||currentRoom)
+      socket.emit('poker:room:get',(r)=>{if(r?.room){currentRoom=r.room;updateRoomUI(r.room);}});
+  });
+  socket.on('poker:rooms:updated',refreshRooms);
+  socket.on('poker:room:state',(room)=>{currentRoom=room;updateRoomUI(room);});
+  socket.on('poker:room:kicked',()=>{showToast('You were removed from the room');backToLobby();});
+  socket.on('poker:game:started',(data)=>{
+    showScreen('game');
+    setupGameView();
+  });
+  socket.on('poker:state',(state)=>{
+    gameData=state;
+    renderGame(state);
+    refreshBalance();
+  });
+  socket.on('poker:game:over',async()=>{
+    const me=await apiFetch('/api/me');myUser=me;updateBalanceDisplays();
+    showGameOver();
+  });
+  socket.on('connect_error',(e)=>showToast('Connection error: '+e.message));
+}
+
+async function refreshBalance(){
+  try{const me=await apiFetch('/api/me');myUser=me;updateBalanceDisplays();}catch(e){}
+}
+
+// ─── SCREENS ──────────────────────────────────
+function showScreen(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+}
+function switchTab(name,evt){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  if(evt?.target) evt.target.classList.add('active');
+  document.getElementById('tab-'+name)?.classList.add('active');
+  if(name==='leaderboard') loadLeaderboard();
+}
+
+// ─── LOBBY ────────────────────────────────────
+function refreshRooms(){
+  if(!socket) return;
+  socket.emit('poker:rooms:list',({rooms})=>{
+    const el=document.getElementById('rooms-list');
+    if(!rooms?.length){el.innerHTML='<div class="room-empty">No open rooms. Create one!</div>';return;}
+    el.innerHTML=rooms.map(r=>`
+      <div class="room-card" onclick="joinRoom('${r.id}','${r.hasPassword}')">
+        <div class="room-card-icon">${r.tvMode?'📺':'🃏'}</div>
+        <div class="room-card-info">
+          <div class="room-card-name">${esc(r.name)}${r.tvMode?'<span class="tv-badge">TV</span>':''}</div>
+          <div class="room-card-meta">Host: ${esc(r.hostName)} · ${r.totalPlayers}/${r.maxPlayers} players${r.botCount?' ('+r.botCount+' bots)':''}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="room-card-bet">$${r.bet}</div>
+          <div style="font-size:11px;color:var(--muted)">${r.hasPassword?'🔒 Private':'🌐 Public'}</div>
+        </div>
+      </div>`).join('');
+  });
+}
+
+async function loadLeaderboard(){
+  try{
+    const data=await apiFetch('/api/leaderboard');
+    const body=document.getElementById('lb-body');
+    if(!body) return;
+    body.innerHTML=(Array.isArray(data)?data:[]).map((r,i)=>`
+      <tr><td style="color:var(--muted);width:40px">${i+1}</td>
+      <td>${esc(r.name)}</td>
+      <td style="color:var(--gold)">$${r.balance}</td></tr>`).join('');
+  }catch(e){}
+}
+
+// ─── CREATE ROOM ──────────────────────────────
+function showCreateRoom(){
+  document.getElementById('cr-error').textContent='';
+  openModal('modal-create');
+}
+function updateCreateUI(){
+  const bet=+document.getElementById('cr-bet').value;
+  const max=+document.getElementById('cr-max').value;
+  const tv=document.getElementById('cr-tv').checked;
+  const bb=Math.max(1,Math.floor(bet/50));
+  const sb=Math.max(1,Math.floor(bb/2));
+  document.getElementById('cr-bet-val').textContent='$'+bet;
+  document.getElementById('cr-max-val').textContent=max;
+  document.getElementById('cr-blind-hint').textContent=`Big blind: $${bb} · Small blind: $${sb}`;
+  document.getElementById('cr-tv-hint').style.display=tv?'block':'none';
+}
+async function createRoom(){
+  const name=document.getElementById('cr-name').value.trim();
+  const bet=+document.getElementById('cr-bet').value;
+  const maxPlayers=+document.getElementById('cr-max').value;
+  const password=document.getElementById('cr-pass').value;
+  const tvMode=document.getElementById('cr-tv').checked;
+  const errEl=document.getElementById('cr-error');
+  errEl.textContent='';
+  socket.emit('poker:room:create',{name,bet,maxPlayers,password,tvMode},(res)=>{
+    if(res.error){errEl.textContent=res.error;return;}
+    myRole=res.role;
+    currentRoom=res.room;
+    closeModal('modal-create');
+    updateRoomUI(res.room);
+    showScreen('room');
+  });
+}
+
+// ─── JOIN ROOM ────────────────────────────────
+function joinRoom(roomId,hasPassword){
+  joinTarget=roomId;
+  if(hasPassword==='true'){
+    document.getElementById('pass-input').value='';
+    document.getElementById('pass-error').textContent='';
+    openModal('modal-pass');
+  } else {
+    doJoin(roomId,'');
+  }
+}
+function joinWithPassword(){
+  const pass=document.getElementById('pass-input').value;
+  document.getElementById('pass-error').textContent='';
+  doJoin(joinTarget,pass);
+}
+function doJoin(roomId,password){
+  socket.emit('poker:room:join',{roomId,password},(res)=>{
+    if(res.error){
+      const errEl=document.getElementById('pass-error');
+      if(errEl) errEl.textContent=res.error;
+      else showToast(res.error);
+      return;
+    }
+    myRole=res.role||'player';
+    currentRoom=res.room;
+    closeModal('modal-pass');
+    updateRoomUI(res.room);
+    showScreen('room');
+  });
+}
+
+// ─── ROOM WAITING ─────────────────────────────
+function updateRoomUI(room){
+  currentRoom=room;
+  document.getElementById('rw-name').textContent=room.name||'Room';
+  document.getElementById('rw-id').textContent='Room · '+room.id;
+  document.getElementById('rw-bet').textContent='$'+room.bet;
+  const bb=Math.max(1,Math.floor(room.bet/50));
+  document.getElementById('rw-bb').textContent='$'+bb;
+  document.getElementById('rw-max').textContent=room.maxPlayers;
+  document.getElementById('room-title-bar').textContent=room.name||'Room';
+  const iAmHost=myUser&&room.hostSub===myUser.sub;
+  const tvBadge=document.getElementById('tv-host-badge');
+  tvBadge.style.display=(room.tvMode&&iAmHost)?'block':'none';
+  const botCtrl=document.getElementById('bot-controls');
+  botCtrl.style.display=iAmHost?'flex':'none';
+  const startBtn=document.getElementById('btn-start');
+  startBtn.style.display=(iAmHost&&room.players.length>=2)?'block':'none';
+  // Build seats
+  const grid=document.getElementById('seats-grid');
+  const players=room.players||[];
+  const maxSeats=room.maxPlayers;
+  let html='';
+  for(let i=0;i<maxSeats;i++){
+    const p=players[i];
+    if(p){
+      const isMe=myUser&&p.sub===myUser.sub;
+      html+=`<div class="seat occupied">
+        <div class="seat-avatar">${p.isBot?'🤖':'👤'}</div>
+        <div class="seat-name">${esc(p.name)}</div>
+        <div class="seat-tag">${isMe?'You':p.isBot?'Bot':''}</div>
+        ${iAmHost&&p.isBot?`<button class="btn btn-danger" style="margin-top:6px;padding:3px 8px;font-size:9px" onclick="removeBot('${p.sub}')">✕</button>`:''}
+      </div>`;
+    } else {
+      html+=`<div class="seat empty"><div class="seat-avatar" style="opacity:.3">—</div><div class="seat-name" style="opacity:.3">Empty</div></div>`;
+    }
+  }
+  // TV host note
+  if(room.tvMode&&iAmHost){
+    html=`<div style="width:100%;text-align:center;font-size:11px;color:var(--muted);padding:8px">Player seats:</div>`+html;
+  }
+  grid.innerHTML=html;
+}
+
+function addBot(diff){
+  socket.emit('poker:room:addBot',{difficulty:diff},(res)=>{if(res?.error) showToast(res.error);});
+}
+function removeBot(botSub){
+  socket.emit('poker:room:removeBot',{botSub},(res)=>{if(res?.error) showToast(res.error);});
+}
+function leaveRoom(){
+  socket.emit('poker:room:leave',()=>{});
+  currentRoom=null;myRole='player';
+  showScreen('lobby');refreshRooms();
+}
+function startGame(){
+  socket.emit('poker:room:start',(res)=>{if(res?.error) showToast(res.error);});
+}
+
+// ─── GAME VIEW SETUP ──────────────────────────
+function setupGameView(){
+  // Single player view only
+  document.getElementById('player-view').classList.add('active');
+}
+
+// ─── SOUNDS ───────────────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let _actx = null;
+function getACtx() {
+  if(!_actx) _actx = new AudioCtx();
+  if(_actx.state === 'suspended') _actx.resume();
+  return _actx;
+}
+function playSound(type) {
+  try {
+    const ctx = getACtx();
+    if(type === 'deal') {
+      // Short crisp card snap
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.06, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for(let i = 0; i < d.length; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.015));
+      }
+      const src = ctx.createBufferSource();
+      const gain = ctx.createGain();
+      const filt = ctx.createBiquadFilter();
+      filt.type = 'highpass'; filt.frequency.value = 2000;
+      src.buffer = buf;
+      src.connect(filt); filt.connect(gain); gain.connect(ctx.destination);
+      gain.gain.value = 0.35;
+      src.start();
+    } else if(type === 'shuffle') {
+      // White-noise burst — fanning cards
+      const dur = 0.35;
+      const buf = ctx.createBuffer(1, ctx.sampleRate * dur, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for(let i = 0; i < d.length; i++) {
+        const env = Math.sin(Math.PI * i / d.length);
+        d[i] = (Math.random() * 2 - 1) * env * 0.4;
+      }
+      const src = ctx.createBufferSource();
+      const filt = ctx.createBiquadFilter();
+      filt.type = 'bandpass'; filt.frequency.value = 3500; filt.Q.value = 0.8;
+      const gain = ctx.createGain(); gain.gain.value = 0.5;
+      src.buffer = buf;
+      src.connect(filt); filt.connect(gain); gain.connect(ctx.destination);
+      src.start();
+    } else if(type === 'chip') {
+      // Ceramic clink
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine'; osc.frequency.value = 1400;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + 0.13);
+    } else if(type === 'chips_win') {
+      // Cascade of clinks
+      for(let i = 0; i < 5; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 1200 + Math.random() * 400;
+        const t = ctx.currentTime + i * 0.07;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.setValueAtTime(0.25, t + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.15);
+      }
+    } else if(type === 'fold') {
+      // Soft thud
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for(let i = 0; i < d.length; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.025));
+      }
+      const src = ctx.createBufferSource();
+      const filt = ctx.createBiquadFilter();
+      filt.type = 'lowpass'; filt.frequency.value = 600;
+      const gain = ctx.createGain(); gain.gain.value = 0.4;
+      src.buffer = buf;
+      src.connect(filt); filt.connect(gain); gain.connect(ctx.destination);
+      src.start();
+    }
+  } catch(e) {} // audio always optional
+}
+
+// ─── CHIP FLY ANIMATION ───────────────────────
+function flyChip(fromEl, toEl, color, onDone) {
+  if(!fromEl || !toEl) { onDone?.(); return; }
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  const chip = document.createElement('div');
+  chip.className = 'flying-chip';
+  chip.style.cssText = `left:${fr.left + fr.width/2 - 10}px;top:${fr.top + fr.height/2 - 10}px;background:${color};`;
+  chip.style.setProperty('--tx', (tr.left + tr.width/2 - fr.left - fr.width/2) + 'px');
+  chip.style.setProperty('--ty', (tr.top + tr.height/2 - fr.top - fr.height/2) + 'px');
+  document.body.appendChild(chip);
+  requestAnimationFrame(() => {
+    chip.classList.add('chip-flying');
+    chip.addEventListener('animationend', () => { chip.remove(); onDone?.(); }, { once: true });
+  });
+}
+
+// ─── GAME RENDERING ───────────────────────────
+const PHASE_NAMES = { preflop:'Pre-Flop', flop:'Flop', turn:'Turn', river:'River', showdown:'Showdown', waiting:'—' };
+let _prevPhase = null;
+let _prevCommCount = 0;
+let _prevHandCount = 0; // my previous hand card count
+let _prevPot = 0;
+
+function renderGame(state) {
+  if(!state) return;
+  renderPokerGame(state);
+}
+
+function renderPokerGame(state) {
+  const mySub = myUser?.sub;
+  const phase  = state.phase;
+  const isShowdown = phase === 'showdown';
+
+  // ── Phase badge ──
+  const pb = document.getElementById('phase-badge');
+  if(pb) {
+    const pname = (PHASE_NAMES[phase] || phase).toUpperCase();
+    if(pb.textContent !== pname) pb.textContent = pname;
+  }
+
+  // ── Community cards ──
+  const commEl = document.getElementById('community-zone');
+  if(commEl) {
+    const comm = state.community || [];
+    const prevCount = _prevCommCount;
+    _prevCommCount = comm.length;
+    commEl.innerHTML = '';
+    for(let i = 0; i < 5; i++) {
+      if(comm[i]) {
+        const c = comm[i];
+        const isNew = i >= prevCount;
+        const isWin = isShowdown && state.winners?.some(w => w.winCards?.some(wc => wc.r === c.r && wc.s === c.s));
+        const el = makeCommCard(c, isWin);
+        if(isNew) {
+          el.classList.add('comm-card-in');
+          el.style.animationDelay = ((i - prevCount) * 0.12) + 's';
+          if(isNew && i === prevCount) setTimeout(() => playSound('deal'), (i - prevCount) * 120);
+        }
+        commEl.appendChild(el);
+      } else {
+        const slot = document.createElement('div');
+        slot.className = 'comm-card-slot';
+        commEl.appendChild(slot);
+      }
+    }
+    // Play shuffle sound when new hand starts (comm resets to 0)
+    if(prevCount > 0 && comm.length === 0) setTimeout(() => playSound('shuffle'), 200);
+  }
+
+  // ── Pot ──
+  const potEl = document.getElementById('pot-amount');
+  const potLabel = document.getElementById('pot-label');
+  if(potEl) {
+    const newPot = state.pot || 0;
+    if(newPot !== _prevPot) {
+      if(newPot > _prevPot) playSound('chip');
+      potEl.classList.remove('pop');
+      void potEl.offsetWidth;
+      potEl.classList.add('pop');
+      _prevPot = newPot;
+    }
+    potEl.textContent = newPot > 0 ? '$' + newPot : '';
+    if(potLabel) potLabel.style.display = newPot > 0 ? '' : 'none';
+  }
+
+  // ── Opponent seats ──
+  const seatsWrap = document.getElementById('opp-seats-wrap');
+  if(seatsWrap) renderOppSeats(state, seatsWrap);
+
+  // ── My cards ──
+  renderMyCards(state);
+
+  // ── My info ──
+  const myChips = document.getElementById('my-chips-val');
+  if(myChips) myChips.textContent = '$' + (state.chips?.[mySub] ?? '—');
+  const toCallRow = document.getElementById('to-call-row');
+  const toCallVal = document.getElementById('to-call-val');
+  const toCall = Math.max(0, (state.currentBet || 0) - (state.bets?.[mySub] || 0));
+  if(toCallRow) toCallRow.style.display = toCall > 0 ? '' : 'none';
+  if(toCallVal) toCallVal.textContent = '$' + toCall;
+
+  // ── Actions ──
+  renderPokerActions(state);
+
+  // ── Phase change effects ──
+  if(_prevPhase !== null && _prevPhase !== phase) {
+    if(phase === 'showdown') {
+      const winners = state.winners || [];
+      if(winners.length > 0) {
+        setTimeout(() => playSound('chips_win'), 400);
+        document.getElementById('player-view')?.classList.add('winner-flash');
+        setTimeout(() => document.getElementById('player-view')?.classList.remove('winner-flash'), 1500);
+      }
+    }
+  }
+  _prevPhase = phase;
+}
+
+// ── Make a community card element ──────────────
+function makeCommCard(card, isWin) {
+  const isRed = card.s === '♥' || card.s === '♦';
+  const el = document.createElement('div');
+  el.className = 'comm-card ' + (isRed ? 'red' : 'black') + (isWin ? ' win-glow' : '');
+  el.innerHTML =
+    `<span class="c-rank">${card.r}</span>` +
+    `<span class="c-suit">${card.s}</span>` +
+    `<span class="c-center">${card.s}</span>` +
+    `<span class="c-rank-br">${card.r}</span>` +
+    `<span class="c-suit-br">${card.s}</span>`;
+  return el;
+}
+
+// ── Opponent seats ─────────────────────────────
+// Dynamic seat positions based on player count
+function getOppPositions(count) {
+  // distribute across top arc
+  const positions = [];
+  const w = Math.min(window.innerWidth * 0.96, 600);
+  const pad = 0.1;
+  for(let i = 0; i < count; i++) {
+    const t = pad + (1 - 2 * pad) * (i / Math.max(count - 1, 1));
+    positions.push({ left: (t * 100).toFixed(1) + '%', transform: 'translateX(-50%)' });
+  }
+  return positions;
+}
+
+function renderOppSeats(state, wrap) {
+  const mySub = myUser?.sub;
+  const isShowdown = state.phase === 'showdown';
+  const others = (state.players || []).filter(p => p.sub !== mySub);
+  const positions = getOppPositions(others.length);
+  wrap.innerHTML = '';
+  others.forEach((p, i) => {
+    const pos = positions[i] || { left: '50%', transform: 'translateX(-50%)' };
+    const isFolded  = state.folded?.includes(p.sub);
+    const isActing  = state.toAct?.[0] === p.sub;
+    const isWinner  = state.winners?.some(w => w.sub === p.sub);
+    const isDealer  = state.players[state.dealerIdx]?.sub === p.sub;
+    const isSb      = state.players[state.sbIdx]?.sub === p.sub;
+    const isBb      = state.players[state.bbIdx]?.sub === p.sub;
+    const bet       = state.bets?.[p.sub] || 0;
+    const hand      = state.allHands?.[p.sub];
+    const handEval  = state.handNames?.[p.sub];
+
+    // Cards HTML
+    let cardsHtml = '';
+    if(!isFolded) {
+      if(hand?.length === 2) {
+        cardsHtml = hand.map(c => {
+          const isRed = c.s === '♥' || c.s === '♦';
+          const isWC  = state.winners?.some(w => w.winCards?.some(wc => wc.r === c.r && wc.s === c.s));
+          return `<div class="opp-card-face ${isRed?'red':'black'}${isWC?' win-glow':''}" style="${isWC?'box-shadow:0 0 0 1px var(--gold)':''}">
+            <span style="font-size:6px;font-weight:700;line-height:1">${c.r}</span>
+            <span style="font-size:8px">${c.s}</span>
+          </div>`;
+        }).join('');
+      } else {
+        const n = (state.chips?.[p.sub] || 0) > 0 ? 2 : 0;
+        cardsHtml = Array(n).fill('<div class="opp-card-back"></div>').join('');
+      }
+    }
+
+    // Badge
+    let badge = '';
+    if(isDealer)      badge = '<span class="opp-badge badge-d">D</span>';
+    else if(isSb)     badge = '<span class="opp-badge badge-sb">SB</span>';
+    else if(isBb)     badge = '<span class="opp-badge badge-bb">BB</span>';
+    if(isFolded)      badge += '<span class="opp-badge badge-fo">Fold</span>';
+
+    const seat = document.createElement('div');
+    seat.className = 'opp-seat' +
+      (isFolded ? ' folded' : '') +
+      (isActing  ? ' is-acting' : '') +
+      (isWinner  ? ' winner' : '');
+    seat.id = 'opp-seat-' + p.sub.replace(/[^a-z0-9]/gi,'');
+    Object.assign(seat.style, { position: 'absolute', ...pos });
+    seat.innerHTML = `
+      <div class="opp-seat-inner">
+        <div class="opp-cards">${cardsHtml}</div>
+        <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:center">${badge}</div>
+        <div class="opp-name">${esc(p.name)}</div>
+        <div class="opp-chips">$${state.chips?.[p.sub] ?? p.chips ?? 0}</div>
+        ${bet > 0 ? `<div class="opp-bet">bet $${bet}</div>` : ''}
+        ${handEval && isShowdown ? `<div class="opp-hand-name">${handEval.name}</div>` : ''}
+      </div>`;
+    wrap.appendChild(seat);
+  });
+}
+
+// ── My cards ────────────────────────────────────
+function renderMyCards(state) {
+  const mySub = myUser?.sub;
+  const row    = document.getElementById('my-cards-row');
+  const nameEl = document.getElementById('my-hand-name');
+  if(!row) return;
+
+  const hand      = state.myHand || [];
+  const isFolded  = state.folded?.includes(mySub);
+  const isShowdown = state.phase === 'showdown';
+  const prevCount  = _prevHandCount;
+  _prevHandCount   = hand.length;
+
+  row.innerHTML = '';
+  nameEl.textContent = '';
+
+  if(isFolded) {
+    nameEl.textContent = 'You folded';
+    nameEl.style.color = 'rgba(255,255,255,.3)';
+    return;
+  }
+
+  if(hand.length === 0) {
+    if(state.phase === 'showdown') nameEl.textContent = 'Waiting for next hand…';
+    return;
+  }
+
+  const winW     = state.winners?.find(w => w.sub === mySub);
+  const winCards = winW?.winCards || [];
+
+  hand.forEach((c, idx) => {
+    const isRed = c.s === '♥' || c.s === '♦';
+    const isWC  = winCards.some(wc => wc.r === c.r && wc.s === c.s);
+    const el    = document.createElement('div');
+    el.className = 'my-card ' + (isRed ? 'red' : 'black') + (isWC ? ' win-glow' : '');
+    el.innerHTML =
+      `<span class="my-card-rank">${c.r}</span>` +
+      `<span class="my-card-suit">${c.s}</span>` +
+      `<span class="my-card-center">${c.s}</span>` +
+      `<span class="my-card-rank-br">${c.r}</span>` +
+      `<span class="my-card-suit-br">${c.s}</span>`;
+
+    const isNew = idx >= prevCount;
+    if(isNew) {
+      el.classList.add('card-dealing');
+      el.style.setProperty('--dx', (idx === 0 ? '-40px' : '40px'));
+      el.style.setProperty('--dy', '-80px');
+      el.style.setProperty('--rot', (idx === 0 ? '-8deg' : '8deg'));
+      el.style.animationDelay = (idx * 0.12) + 's';
+      setTimeout(() => playSound('deal'), idx * 120);
+    } else if(isShowdown && winW) {
+      el.classList.add('card-flip-in');
+    }
+
+    row.appendChild(el);
+  });
+
+  // Hand name when community is out
+  if(state.community?.length >= 3 && hand.length === 2) {
+    const ev = evalHandClient(hand, state.community);
+    if(ev?.name && ev.name !== '—') {
+      nameEl.textContent = ev.name;
+      nameEl.style.color = '';
+    }
+  }
+  if(isShowdown && winW) {
+    nameEl.textContent = '🏆 ' + (winW.handName || '');
+    nameEl.style.color = 'var(--gold)';
+  }
+}
+
+// ── Actions ─────────────────────────────────────
+function renderPokerActions(state) {
+  const statusEl = document.getElementById('action-status');
+  const btnsEl   = document.getElementById('action-btns');
+  const raiseRow = document.getElementById('raise-row');
+  if(!btnsEl) return;
+
+  // Remove old buttons
+  btnsEl.innerHTML = '';
+  if(raiseRow) raiseRow.style.display = 'none';
+
+  const mySub    = myUser?.sub;
+  const isMyTurn = state.toAct?.[0] === mySub;
+  const isFolded = state.folded?.includes(mySub);
+  const phase    = state.phase;
+
+  // Status text
+  if(statusEl) {
+    statusEl.classList.toggle('my-turn-status', isMyTurn && !isFolded && phase !== 'showdown');
+    if(isFolded)              statusEl.textContent = 'You folded';
+    else if(phase === 'showdown') {
+      const wMe = state.winners?.find(w => w.sub === mySub);
+      statusEl.textContent = wMe ? 'You win $' + wMe.amount + ' — ' + (wMe.handName || '') : 'Showdown…';
+    }
+    else if(!isMyTurn) {
+      const actName = state.players?.find(p => p.sub === state.toAct?.[0])?.name || '';
+      statusEl.textContent = actName ? actName + ' is thinking…' : 'Waiting…';
+    }
+    else {
+      const toCall = Math.max(0, (state.currentBet || 0) - (state.bets?.[mySub] || 0));
+      statusEl.textContent = toCall > 0 ? 'Your turn — call $' + toCall + ', raise, or fold' : 'Your turn — check, bet, or fold';
+    }
+  }
+
+  if(!isMyTurn || isFolded || phase === 'showdown') return;
+
+  const toCall = Math.max(0, (state.currentBet || 0) - (state.bets?.[mySub] || 0));
+  const chips  = state.chips?.[mySub] || 0;
+
+  function makeBtn(label, cls, onclick) {
+    const b = document.createElement('button');
+    b.className = 'btn ' + cls + ' btn-in';
+    b.style.animationDelay = '0s';
+    b.textContent = label;
+    b.onclick = onclick;
+    return b;
+  }
+
+  // Fold
+  btnsEl.appendChild(makeBtn('Fold', 'btn-danger', () => { playSound('fold'); doAction('fold'); }));
+
+  // Check or Call
+  if(toCall === 0) {
+    btnsEl.appendChild(makeBtn('Check', '', () => doAction('check')));
+  } else {
+    const callAmt = Math.min(toCall, chips);
+    btnsEl.appendChild(makeBtn('Call $' + callAmt, 'btn-primary', () => { playSound('chip'); doAction('call'); }));
+  }
+
+  // Raise / All-in
+  if(chips > toCall) {
+    const minRaise = Math.max(state.bigBlind || 1, (state.currentBet || 0) * 2);
+    const maxRaise = chips + (state.bets?.[mySub] || 0);
+    const initAmt  = Math.min(Math.max(minRaise, (state.currentBet || 0)) + Math.floor((state.pot || 0) * 0.5), maxRaise);
+    raiseAmount    = initAmt;
+
+    btnsEl.appendChild(makeBtn('Raise $' + initAmt, '', () => { playSound('chip'); doRaise(); }));
+
+    if(raiseRow) {
+      raiseRow.style.display = 'flex';
+      const slider = document.getElementById('raise-slider');
+      const valLbl = document.getElementById('raise-val-label');
+      if(slider) {
+        slider.min   = minRaise;
+        slider.max   = maxRaise;
+        slider.step  = state.bigBlind || 1;
+        slider.value = initAmt;
+        slider.oninput = function() {
+          raiseAmount = +this.value;
+          if(valLbl) valLbl.textContent = '$' + raiseAmount;
+          // Update raise button label
+          const rBtn = btnsEl.querySelectorAll('.btn')[2];
+          if(rBtn) rBtn.textContent = 'Raise $' + raiseAmount;
+        };
+        if(valLbl) valLbl.textContent = '$' + initAmt;
+      }
+    }
+
+    btnsEl.appendChild(makeBtn('All In $' + chips, 'btn-danger', () => { playSound('chips_win'); doAction('allin'); }));
+  } else if(chips > 0) {
+    btnsEl.appendChild(makeBtn('All In $' + chips, 'btn-danger', () => { playSound('chips_win'); doAction('allin'); }));
+  }
+}
+
+// ─── CARD HTML (kept for potential use) ─────────
+function cardHTML(card, classes='', size='') {
+  const isRed = card.s === "♥" || card.s === "♦";
+  const col = isRed ? 'red' : 'black';
+  return `<div class="card ${col} ${classes}">
+    <div class="card-tl"><span class="card-rank">${card.r}</span><span class="card-suit-s">${card.s}</span></div>
+    <div class="card-center">${card.s}</div>
+    <div class="card-br"><span class="card-rank">${card.r}</span><span class="card-suit-s">${card.s}</span></div>
+  </div>`;
+}
+
+// ─── ACTIONS ──────────────────────────────────
+function doAction(action){
+  socket.emit('poker:action',{action,amount:raiseAmount||0},(res)=>{
+    if(res?.error) showToast(res.error);
+  });
+}
+function doRaise(){
+  socket.emit('poker:action',{action:'raise',amount:raiseAmount},(res)=>{
+    if(res?.error) showToast(res.error);
+  });
+}
+
+// ─── CLIENT HAND EVALUATOR ────────────────────
+const PR=['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+function pv(r){return PR.indexOf(r);}
+function evalHandClient(hole,comm){
+  const all=[...hole,...comm];
+  if(all.length<5) return {rank:-1,name:'—'};
+  const cs=[];const n=all.length;
+  for(let a=0;a<n-4;a++) for(let b=a+1;b<n-3;b++) for(let c=b+1;c<n-2;c++)
+  for(let d=c+1;d<n-1;d++) for(let e=d+1;e<n;e++) cs.push([all[a],all[b],all[c],all[d],all[e]]);
+  let best=null;
+  for(const c of cs){
+    const ev=evalFiveClient(c);
+    if(!best||ev.rank>best.rank||(ev.rank===best.rank&&ev.tb.some((v,i)=>v>(best.tb[i]??-1)))) best=ev;
+  }
+  return best||{rank:0,name:'High Card'};
+}
+function evalFiveClient(cards){
+  const vs=cards.map(c=>pv(c.r)).sort((a,b)=>b-a);
+  const ss=cards.map(c=>c.s);
+  const fl=ss.every(s=>s===ss[0]);
+  let st=false,sh=0;
+  if([...new Set(vs)].length===5){
+    if(vs[0]-vs[4]===4){st=true;sh=vs[0];}
+    if(vs[0]===12&&vs[1]===3&&vs[2]===2&&vs[3]===1&&vs[4]===0){st=true;sh=3;}
+  }
+  const cnt={};for(const v of vs) cnt[v]=(cnt[v]||0)+1;
+  const gr=Object.entries(cnt).map(([v,c])=>({v:+v,c})).sort((a,b)=>b.c-a.c||b.v-a.v);
+  const [g1,g2]=gr;
+  if(fl&&st) return {rank:vs[0]===12&&sh===12?9:8,name:vs[0]===12&&sh===12?'Royal Flush':'Straight Flush',tb:[sh]};
+  if(g1.c===4) return {rank:7,name:'Four of a Kind',tb:[g1.v]};
+  if(g1.c===3&&g2?.c===2) return {rank:6,name:'Full House',tb:[g1.v,g2.v]};
+  if(fl) return {rank:5,name:'Flush',tb:vs};
+  if(st) return {rank:4,name:'Straight',tb:[sh]};
+  if(g1.c===3) return {rank:3,name:'Three of a Kind',tb:[g1.v]};
+  if(g1.c===2&&g2?.c===2) return {rank:2,name:'Two Pair',tb:[Math.max(g1.v,g2.v),Math.min(g1.v,g2.v)]};
+  if(g1.c===2) return {rank:1,name:'One Pair',tb:[g1.v]};
+  return {rank:0,name:'High Card',tb:vs};
+}
+
+// ─── LEAVE GAME ───────────────────────────────
+function tryLeaveGame(){
+  if(gameData&&gameData.phase!=='showdown') openModal('modal-leave-game');
+  else backToLobby();
+}
+function confirmLeaveGame(){
+  closeModal('modal-leave-game');
+  socket.emit('poker:room:leave',()=>{});
+  gameData=null;currentRoom=null;
+  showScreen('lobby');refreshRooms();
+  refreshBalance();
+}
+function backToLobby(){
+  document.getElementById('gameover-overlay').classList.remove('show');
+  gameData=null;currentRoom=null;
+  showScreen('lobby');refreshRooms();
+  refreshBalance();
+}
+
+// ─── GAME OVER ────────────────────────────────
+function showGameOver(){
+  stopTurnTimer();
+  const g=gameData;
+  const mySub=myUser?.sub;
+  // Calculate final chip count
+  const finalChips=g?.chips?.[mySub]||0;
+  const startChips=currentRoom?.bet||0;
+  const diff=finalChips-startChips;
+  document.getElementById('go-emoji').textContent=finalChips>startChips?'🏆':finalChips===0?'💸':'🃏';
+  document.getElementById('go-title').textContent=finalChips>startChips?'You Win!':finalChips===0?'Busted!':'Game Over';
+  document.getElementById('go-sub').textContent=diff>0?`+$${diff} profit`:`$${Math.abs(diff)} loss`;
+  const rankings=document.getElementById('go-rankings');
+  if(g?.players){
+    rankings.innerHTML=g.players.sort((a,b)=>(g.chips[b.sub]||0)-(g.chips[a.sub]||0)).map((p,i)=>{
+      const chips=g.chips[p.sub]||0;
+      const d=chips-startChips;
+      return `<div class="rank-row ${i===0?'rank-1':''}">
+        <div class="rank-pos">${i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1)}</div>
+        <div class="rank-name">${esc(p.name)}${p.sub===mySub?' (you)':''}</div>
+        <div class="rank-amount ${d>=0?'plus':'minus'}">${d>=0?'+':''}$${d}</div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('gameover-overlay').classList.add('show');
+}
+
+
+
+// ─── MODALS ───────────────────────────────────
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+
+// ─── TOAST ────────────────────────────────────
+let toastTimer=null;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ─── UTILS ────────────────────────────────────
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// Start
+window.addEventListener('load',init);
+</script>
+</body>
+</html>

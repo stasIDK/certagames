@@ -1,0 +1,2104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Durak — Certa Games</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060d06;
+  --felt:#0d2010;
+  --felt2:#0a1a0d;
+  --gold:#c9a84c;
+  --gold2:#e2c97e;
+  --gold3:rgba(201,168,76,0.12);
+  --red:#c0392b;
+  --red2:#e74c3c;
+  --border:rgba(201,168,76,0.18);
+  --text:rgba(255,255,255,0.88);
+  --muted:rgba(255,255,255,0.3);
+  --card-bg:#fdf6e3;
+  --card-w:72px;
+  --card-h:100px;
+}
+html,body{min-height:100vh;background:var(--bg);font-family:'DM Mono',monospace;color:var(--text);overflow-x:hidden}
+
+/* ── BACKGROUNDS ── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse 100% 60% at 50% 100%,rgba(13,32,16,0.9),transparent),
+    radial-gradient(ellipse 60% 40% at 20% 20%,rgba(201,168,76,0.04),transparent);
+  pointer-events:none;z-index:0
+}
+
+/* ── SCREENS ── */
+.screen{display:none;position:fixed;inset:0;z-index:10;overflow-y:auto}
+.screen.active{display:flex;flex-direction:column}
+
+/* ── LOADING ── */
+#screen-loading{align-items:center;justify-content:center;background:var(--bg)}
+.loading-logo{font-family:'Playfair Display',serif;font-style:italic;font-size:52px;color:var(--gold2);text-align:center;animation:pulse 2s infinite}
+.loading-sub{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,168,76,.3);margin-top:12px;text-align:center}
+@keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}
+
+/* ── HEADER ── */
+.top-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 24px;border-bottom:1px solid var(--border);
+  background:rgba(6,13,6,.92);backdrop-filter:blur(8px);
+  position:sticky;top:0;z-index:100;flex-shrink:0
+}
+.top-bar-logo{font-family:'Playfair Display',serif;font-style:italic;font-size:22px;color:var(--gold2);display:flex;align-items:center;gap:10px}
+.back-link{color:rgba(201,168,76,.45);font-size:20px;text-decoration:none;transition:color .15s;line-height:1}
+.back-link:hover{color:var(--gold2)}
+.user-info{display:flex;align-items:center;gap:10px}
+.balance-chip{
+  background:var(--gold3);border:1px solid var(--border);border-radius:20px;
+  padding:5px 14px;font-size:12px;color:var(--gold2);letter-spacing:.04em
+}
+.user-avatar{width:28px;height:28px;border-radius:50%;border:1px solid var(--border);object-fit:cover}
+.user-name-small{font-size:11px;color:rgba(255,255,255,.5);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-logout{background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.3);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:4px;cursor:pointer;transition:all .15s}
+.btn-logout:hover{border-color:rgba(255,255,255,.3);color:rgba(255,255,255,.7)}
+
+/* ── LOBBY ── */
+#screen-lobby{background:var(--bg)}
+.lobby-content{flex:1;padding:28px 24px 60px;max-width:900px;width:100%;margin:0 auto}
+.lobby-hero{text-align:center;margin-bottom:40px;padding-top:20px}
+.lobby-title{font-family:'Playfair Display',serif;font-style:italic;font-size:clamp(36px,7vw,64px);color:var(--gold2);line-height:1;margin-bottom:8px;text-shadow:0 0 40px rgba(201,168,76,.2)}
+.lobby-tagline{font-size:11px;letter-spacing:.25em;text-transform:uppercase;color:rgba(201,168,76,.35)}
+
+.section-title{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:rgba(201,168,76,.4);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+
+.rooms-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.btn{
+  background:rgba(201,168,76,.08);border:1px solid var(--border);
+  color:var(--gold);font-family:'DM Mono',monospace;font-size:11px;
+  letter-spacing:.08em;text-transform:uppercase;padding:8px 18px;
+  border-radius:6px;cursor:pointer;transition:all .2s
+}
+.btn:hover{background:rgba(201,168,76,.18);border-color:var(--gold);color:var(--gold2)}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--gold);border-color:var(--gold);color:#060d06;font-weight:500}
+.btn-primary:hover{background:var(--gold2);border-color:var(--gold2)}
+.btn-danger{border-color:rgba(192,57,43,.4);color:rgba(192,57,43,.7)}
+.btn-danger:hover{background:rgba(192,57,43,.12);border-color:var(--red);color:var(--red2)}
+
+.rooms-list{display:flex;flex-direction:column;gap:10px;margin-bottom:32px}
+.room-card{
+  display:flex;align-items:center;gap:16px;
+  background:linear-gradient(135deg,rgba(255,255,255,.03),rgba(255,255,255,.01));
+  border:1px solid var(--border);border-radius:12px;padding:16px 20px;
+  transition:border-color .2s,background .2s;cursor:pointer
+}
+.room-card:hover{border-color:rgba(201,168,76,.4);background:rgba(201,168,76,.04)}
+.room-card-icon{font-size:28px;flex-shrink:0}
+.room-card-info{flex:1}
+.room-card-name{font-family:'Playfair Display',serif;font-style:italic;font-size:18px;color:var(--gold2);margin-bottom:4px}
+.room-card-meta{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.room-card-bet{font-size:18px;color:var(--gold);font-family:'Playfair Display',serif}
+.room-card-players{text-align:right;font-size:11px;color:var(--muted)}
+.room-empty{text-align:center;padding:40px;color:var(--muted);font-size:13px;border:1px dashed rgba(255,255,255,.08);border-radius:12px}
+
+.tabs{display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)}
+.tab{padding:10px 20px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Mono',monospace}
+.tab.active{color:var(--gold2);border-bottom-color:var(--gold)}
+.tab-panel{display:none}.tab-panel.active{display:block}
+
+
+.input{background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:12px;padding:9px 14px;border-radius:6px;outline:none;transition:border-color .15s}
+.input:focus{border-color:var(--gold)}
+.input::placeholder{color:rgba(255,255,255,.2)}
+.input-lg{width:100%;padding:11px 16px;font-size:13px}
+
+/* Leaderboard */
+.lb-table{width:100%;border-collapse:collapse}
+.lb-table th{text-align:left;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(201,168,76,.35);padding:8px 12px;border-bottom:1px solid var(--border)}
+.lb-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px}
+.lb-table tr:hover td{background:rgba(201,168,76,.03)}
+.lb-rank{color:var(--muted);font-size:12px;width:40px}
+.lb-gold{color:#ffd700}.lb-silver{color:#c0c0c0}.lb-bronze{color:#cd7f32}
+
+/* ── MODALS ── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,.75);align-items:center;justify-content:center;padding:20px
+}
+.modal-overlay.show{display:flex}
+.modal{
+  background:linear-gradient(160deg,#111a11,#0a120a);
+  border:1px solid rgba(201,168,76,.25);border-radius:16px;
+  padding:36px 32px;width:100%;max-width:480px;
+  animation:modalIn .3s cubic-bezier(.34,1.56,.64,1)
+}
+@keyframes modalIn{from{transform:scale(.88) translateY(20px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+.modal-title{font-family:'Playfair Display',serif;font-style:italic;font-size:26px;color:var(--gold2);margin-bottom:24px}
+.modal-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.modal-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(201,168,76,.4)}
+.modal-actions{display:flex;gap:10px;margin-top:24px;justify-content:flex-end}
+.modal-close{position:absolute;top:16px;right:20px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px}
+.modal-close:hover{color:var(--text)}
+.range-row{display:flex;align-items:center;gap:12px}
+.range-row input[type=range]{flex:1;accent-color:var(--gold)}
+.range-val{min-width:60px;text-align:right;color:var(--gold2);font-size:14px}
+.helper{font-size:11px;color:var(--muted);margin-top:4px}
+.error-msg{color:var(--red2);font-size:12px;margin-top:8px}
+
+/* ── ROOM WAITING ── */
+#screen-room{background:var(--bg)}
+.room-waiting{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px}
+.room-waiting-title{font-family:'Playfair Display',serif;font-style:italic;font-size:36px;color:var(--gold2);margin-bottom:8px}
+.room-waiting-id{font-size:11px;letter-spacing:.2em;color:rgba(201,168,76,.35);margin-bottom:40px}
+.seats-grid{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-bottom:40px}
+.seat{
+  width:120px;background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.01));
+  border:1px solid var(--border);border-radius:14px;padding:20px 14px;
+  text-align:center;transition:border-color .2s
+}
+.seat.occupied{border-color:rgba(201,168,76,.3)}
+.seat.empty{border-style:dashed;opacity:.5}
+.seat-avatar{width:48px;height:48px;border-radius:50%;background:var(--gold3);border:1px solid var(--border);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.seat-name{font-size:12px;color:var(--gold2);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seat-tag{font-size:10px;color:var(--muted);letter-spacing:.06em}
+.seat-host-badge{font-size:9px;background:var(--gold3);border:1px solid var(--border);color:var(--gold);padding:2px 8px;border-radius:10px;margin-top:6px;display:inline-block}
+.bot-controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:20px}
+.room-info-row{display:flex;gap:24px;margin-bottom:32px;font-size:12px;color:var(--muted)}
+.room-info-item{text-align:center}
+.room-info-val{font-size:18px;color:var(--gold2);font-family:'Playfair Display',serif;margin-bottom:2px}
+
+/* ── GAME TABLE ── */
+#screen-game{background:var(--bg);overflow:hidden}
+.game-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.poker-table{
+  flex:1;
+  background:radial-gradient(ellipse 80% 70% at 50% 50%,#1a4025,#0d2010 60%,#060d06);
+  border:8px solid #1a0f05;
+  border-radius:50% / 30%;
+  margin:20px 30px;
+  position:relative;
+  display:flex;align-items:center;justify-content:center;
+  min-height:300px;
+  box-shadow:inset 0 0 60px rgba(0,0,0,.5),0 0 40px rgba(0,0,0,.8)
+}
+.table-inner{
+  position:absolute;inset:12px;
+  background:radial-gradient(ellipse 70% 60% at 50% 50%,rgba(26,64,37,.6),transparent);
+  border-radius:50%/30%;
+  display:flex;align-items:center;justify-content:center
+}
+/* Trump indicator */
+.trump-display{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none
+}
+.trump-suit{font-size:64px;opacity:.55;line-height:1;filter:drop-shadow(0 0 12px rgba(201,168,76,.4))}
+.trump-label{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.25);margin-top:4px}
+
+/* Table cards */
+.table-zone{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center;
+  max-width:60%;min-width:180px;min-height:120px;z-index:10;
+  border-radius:12px;transition:background .2s
+}
+.table-pair{display:flex;flex-direction:column;gap:-20px;align-items:center;position:relative}
+.table-pair .def-card{position:absolute;top:16px;left:6px;z-index:2}
+
+/* Deck pile — bottom-right, never blocks seats */
+.deck-pile{
+  position:absolute;bottom:14px;right:14px;
+  text-align:center;z-index:5
+}
+.deck-card-back{
+  width:var(--card-w);height:var(--card-h);
+  background:linear-gradient(145deg,#1a3a7a,#0e2456);
+  border:2px solid rgba(255,255,255,.15);border-radius:8px;
+  position:relative;overflow:hidden;
+  box-shadow:2px 2px 8px rgba(0,0,0,.5)
+}
+.deck-card-back::before{
+  content:'';position:absolute;inset:4px;
+  border:1px solid rgba(255,255,255,.12);border-radius:5px;
+  background:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.04) 4px,rgba(255,255,255,.04) 8px)
+}
+.deck-count{font-size:10px;color:var(--muted);margin-top:6px;letter-spacing:.08em}
+
+/* Trump card (rotated beside deck) */
+.trump-card-peek{
+  position:absolute;bottom:18px;right:calc(var(--card-w) + 26px);
+  transform:rotate(90deg);z-index:4;opacity:.9
+}
+
+/* Players around table — clockwise: left, top, right */
+.player-seat{
+  position:absolute;display:flex;flex-direction:column;align-items:center;gap:4px;z-index:20
+}
+.player-seat.top{top:6px;left:50%;transform:translateX(-50%)}
+.player-seat.left{left:6px;top:50%;transform:translateY(-50%)}
+.player-seat.right{right:6px;top:50%;transform:translateY(-50%)}
+.player-seat-name{font-size:10px;color:var(--muted);letter-spacing:.04em;text-align:center;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.player-seat-cards{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;max-width:120px}
+.player-card-back{
+  width:32px;height:44px;
+  background:linear-gradient(145deg,#1a3a7a,#0e2456);
+  border:1px solid rgba(255,255,255,.15);border-radius:4px
+}
+.player-badge{
+  font-size:9px;padding:2px 8px;border-radius:10px;
+  border:1px solid;white-space:nowrap
+}
+.badge-attacker{background:rgba(201,168,76,.12);border-color:var(--gold);color:var(--gold)}
+.badge-defender{background:rgba(192,57,43,.12);border-color:var(--red);color:var(--red2)}
+
+/* My hand */
+.my-hand-zone{
+  display:flex;align-items:center;justify-content:center;
+  padding:10px 10px 14px;gap:4px;flex-wrap:wrap;
+  background:rgba(0,0,0,.4);border-top:1px solid rgba(255,255,255,.06);
+  min-height:120px;flex-shrink:0;position:relative
+}
+.my-hand-label{
+  position:absolute;top:6px;left:16px;
+  font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.2)
+}
+
+/* Cards */
+.card{
+  width:var(--card-w);height:var(--card-h);
+  background:var(--card-bg);border:1px solid rgba(0,0,0,.15);border-radius:8px;
+  display:flex;flex-direction:column;position:relative;
+  cursor:default;user-select:none;flex-shrink:0;
+  box-shadow:1px 2px 6px rgba(0,0,0,.4);
+  transition:transform .15s,box-shadow .15s
+}
+.card.selectable{cursor:pointer}
+.card.selectable:hover{transform:translateY(-8px) scale(1.04);box-shadow:0 8px 20px rgba(0,0,0,.6);z-index:10}
+.card.selected{transform:translateY(-12px);box-shadow:0 0 0 2px var(--gold),0 8px 24px rgba(0,0,0,.6);z-index:11}
+.card.trump-card{box-shadow:0 0 0 2px var(--gold),0 0 12px rgba(201,168,76,.7),0 0 24px rgba(201,168,76,.35);background:linear-gradient(135deg,#fffcf0 70%,rgba(201,168,76,.18))}
+.card-tl{position:absolute;top:4px;left:5px;display:flex;flex-direction:column;align-items:center;gap:0}
+.card-br{position:absolute;bottom:4px;right:5px;display:flex;flex-direction:column;align-items:center;gap:0;transform:rotate(180deg)}
+.card-rank{font-size:13px;font-weight:700;line-height:1}
+.card-suit-s{font-size:10px;line-height:1}
+.card-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:26px}
+.card.red .card-rank,.card.red .card-suit-s,.card.red .card-center{color:#c0392b}
+.card.black .card-rank,.card.black .card-suit-s,.card.black .card-center{color:#1a1a1a}
+
+/* Actions bar */
+.actions-bar{
+  display:flex;gap:8px;padding:8px 16px;
+  background:rgba(0,0,0,.5);border-top:1px solid rgba(255,255,255,.04);
+  justify-content:center;flex-wrap:wrap;flex-shrink:0
+}
+.action-hint{
+  width:100%;text-align:center;font-size:11px;color:var(--muted);letter-spacing:.06em;
+  padding-bottom:2px
+}
+
+/* Status bar */
+.status-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 20px;background:rgba(0,0,0,.6);
+  font-size:11px;color:var(--muted);flex-shrink:0
+}
+.status-indicator{display:flex;align-items:center;gap:6px}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.status-dot.attack{background:var(--gold);box-shadow:0 0 6px var(--gold)}
+.status-dot.defend{background:var(--red2);box-shadow:0 0 6px var(--red2)}
+
+/* Game over */
+.gameover-overlay{
+  display:none;position:fixed;inset:0;z-index:300;
+  background:rgba(0,0,0,.82);align-items:center;justify-content:center;padding:20px
+}
+.gameover-overlay.show{display:flex}
+.gameover-card{
+  background:linear-gradient(160deg,#111a11,#0a0f0a);
+  border:1px solid var(--border);border-radius:20px;
+  padding:48px 40px;text-align:center;max-width:420px;width:100%;
+  animation:modalIn .4s cubic-bezier(.34,1.56,.64,1)
+}
+.gameover-emoji{font-size:56px;margin-bottom:16px}
+.gameover-title{font-family:'Playfair Display',serif;font-style:italic;font-size:36px;color:var(--gold2);margin-bottom:8px}
+.gameover-sub{font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.6}
+.gameover-pot{font-size:28px;color:var(--gold);font-family:'Playfair Display',serif;margin-bottom:24px}
+
+/* Zero balance */
+.broke-overlay{display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.85);align-items:center;justify-content:center;padding:20px}
+.broke-overlay.show{display:flex}
+
+/* Notif toast */
+.toast{
+  position:fixed;top:20px;right:20px;z-index:9999;
+  background:rgba(13,32,16,.95);border:1px solid var(--border);border-radius:10px;
+  padding:12px 20px;font-size:12px;color:var(--gold2);
+  transform:translateX(120%);transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+  max-width:300px;
+}
+.toast.show{transform:translateX(0)}
+
+
+/* ── ANIMATIONS & DRAG ── */
+
+/* Card flies in from above (used for new attack cards on table) */
+@keyframes cardFlyIn{
+  from{transform:translateY(-60px) scale(.7) rotate(-8deg);opacity:0}
+  to{transform:translateY(0) scale(1) rotate(0deg);opacity:1}
+}
+.card-anim{animation:cardFlyIn .38s cubic-bezier(.22,1,.36,1) both}
+
+/* Card lands on table with bounce */
+@keyframes cardLand{
+  0%  {transform:scale(1.15) rotate(5deg)}
+  55% {transform:scale(.96) rotate(-1.5deg)}
+  80% {transform:scale(1.02) rotate(.5deg)}
+  100%{transform:scale(1) rotate(0)}
+}
+.card-land{animation:cardLand .32s cubic-bezier(.22,1,.36,1)}
+
+/* Defense card slides on at angle */
+@keyframes defSlide{
+  from{transform:rotate(10deg) translateY(-24px) translateX(8px) scale(.8);opacity:0}
+  60% {transform:rotate(12deg) translateY(2px) translateX(-2px) scale(1.03)}
+  to  {transform:rotate(10deg) translateY(0) translateX(0) scale(1);opacity:1}
+}
+.def-anim{animation:defSlide .35s cubic-bezier(.34,1.46,.64,1) both}
+
+/* Card flies from hand to table (attack play) */
+@keyframes cardPlayDown{
+  0%  {transform:translateY(80px) scale(.9) rotate(6deg);opacity:.6}
+  60% {transform:translateY(-6px) scale(1.06) rotate(-2deg);opacity:1}
+  100%{transform:translateY(0) scale(1) rotate(0);opacity:1}
+}
+.card-play-down{animation:cardPlayDown .4s cubic-bezier(.22,1,.36,1) both}
+
+/* Card swoops into hand (draw from deck) */
+@keyframes cardDraw{
+  from{transform:translateX(60px) translateY(-20px) scale(.7) rotate(12deg);opacity:0}
+  60% {transform:translateX(-4px) translateY(2px) scale(1.04) rotate(-1deg)}
+  to  {transform:translateX(0) translateY(0) scale(1) rotate(0);opacity:1}
+}
+.card-draw{animation:cardDraw .45s cubic-bezier(.22,1,.36,1) both}
+
+/* Cards scatter off table when taken */
+@keyframes cardTakeLeft{
+  0%  {transform:translateY(0) rotate(0) scale(1);opacity:1}
+  30% {transform:translateY(-10px) rotate(-6deg) scale(1.05)}
+  100%{transform:translateY(60px) translateX(-30px) rotate(-20deg) scale(.7);opacity:0}
+}
+@keyframes cardTakeRight{
+  0%  {transform:translateY(0) rotate(0) scale(1);opacity:1}
+  30% {transform:translateY(-10px) rotate(6deg) scale(1.05)}
+  100%{transform:translateY(60px) translateX(30px) rotate(20deg) scale(.7);opacity:0}
+}
+@keyframes cardTakeCenter{
+  0%  {transform:translateY(0) scale(1);opacity:1}
+  40% {transform:translateY(-8px) scale(1.06)}
+  100%{transform:translateY(70px) scale(.65);opacity:0}
+}
+.card-take-l{animation:cardTakeLeft .55s cubic-bezier(.4,0,1,1) both}
+.card-take-r{animation:cardTakeRight .55s cubic-bezier(.4,0,1,1) both}
+.card-take-c{animation:cardTakeCenter .55s cubic-bezier(.4,0,1,1) both}
+
+/* Pile cleared — cards burst out */
+@keyframes cardClear{
+  0%  {transform:scale(1);opacity:1}
+  50% {transform:scale(1.12) translateY(-8px)}
+  100%{transform:scale(.5) translateY(-40px);opacity:0}
+}
+.card-clear{animation:cardClear .4s cubic-bezier(.4,0,1,1) both}
+
+/* Hand card stagger-in */
+@keyframes handCardIn{
+  from{transform:translateY(28px) scale(.85);opacity:0}
+  to{transform:translateY(0) scale(1);opacity:1}
+}
+.card-hand-in{animation:handCardIn .3s cubic-bezier(.22,1,.36,1) both}
+
+/* Glow pulse when it's your turn */
+@keyframes turnGlow{
+  0%,100%{box-shadow:inset 0 0 0 rgba(201,168,76,0)}
+  50%{box-shadow:inset 0 0 24px rgba(201,168,76,.18),0 0 20px rgba(201,168,76,.08)}
+}
+.my-hand-zone.my-turn{animation:turnGlow 2s infinite}
+
+/* drag ghost */
+#drag-ghost{position:fixed;pointer-events:none;z-index:9999;display:none;transform:rotate(-6deg) scale(1.06)}
+
+/* drop target highlight */
+.table-zone.drag-over{outline:2px dashed rgba(201,168,76,.6);outline-offset:8px;border-radius:12px;background:rgba(201,168,76,.05)}
+.table-pair.drop-highlight{outline:2px solid var(--gold);border-radius:8px}
+
+/* dragging card source */
+.card.dragging{opacity:.35}
+
+/* hand scroll on mobile */
+.my-hand-zone{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap;justify-content:flex-start;padding-left:16px}
+
+
+/* ── TURN TRANSITION ── */
+#turn-announce{
+  display:none;position:fixed;inset:0;z-index:250;pointer-events:none;
+  align-items:center;justify-content:center;
+}
+#turn-announce.show{display:flex}
+.turn-announce-inner{
+  background:rgba(6,13,6,.92);border:1px solid var(--gold);
+  border-radius:20px;padding:18px 40px;text-align:center;
+  animation:turnAnnounceIn .55s cubic-bezier(.34,1.56,.64,1);
+}
+.turn-announce-who{font-family:'Playfair Display',serif;font-style:italic;font-size:28px;color:var(--gold2);margin-bottom:4px}
+.turn-announce-role{font-size:12px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
+@keyframes turnAnnounceIn{from{transform:scale(.7) translateY(30px);opacity:0}to{transform:scale(1) translateY(0);opacity:1}}
+@keyframes turnAnnounceOut{from{transform:scale(1);opacity:1}to{transform:scale(1.15) translateY(-28px);opacity:0}}
+.turn-announce-inner.out{animation:turnAnnounceOut .45s ease forwards}
+
+/* ── PILE-ON PHASE GLOW ── */
+
+.poker-table.turn-flash{animation:tableFlash .6s ease forwards}
+@keyframes tableFlash{0%{box-shadow:inset 0 0 60px rgba(0,0,0,.5),0 0 80px rgba(201,168,76,.55),0 0 0 4px rgba(201,168,76,.9)}100%{box-shadow:inset 0 0 60px rgba(0,0,0,.5),0 0 40px rgba(0,0,0,.8)}}
+
+/* ── TURN TIMER ── */
+.turn-timer{
+  display:none;
+  position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,.75);border:1px solid var(--border);
+  border-radius:24px;padding:4px 16px;
+  font-size:12px;color:var(--gold2);letter-spacing:.06em;
+  z-index:50;white-space:nowrap;
+  backdrop-filter:blur(6px);
+}
+.turn-timer.active{display:block}
+.turn-timer.urgent{color:#ff6b6b;border-color:rgba(255,107,107,.4);animation:timerPulse .6s infinite}
+@keyframes timerPulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+.timer-bar-wrap{
+  width:100%;height:3px;background:rgba(255,255,255,.08);
+  position:absolute;top:0;left:0;z-index:60;border-radius:0
+}
+.timer-bar{height:100%;background:var(--gold);width:100%;transition:width .1s linear;border-radius:0}
+.timer-bar.urgent{background:#ff6b6b}
+
+/* pile-on banner removed */
+
+/* ── PLAYER SEAT TIMER ── */
+.player-seat.their-turn .player-seat-name{color:var(--gold2)}
+.player-seat-timer{
+  width:36px;height:3px;background:rgba(255,255,255,.15);border-radius:3px;margin-top:3px;overflow:hidden
+}
+.player-seat-timer-bar{height:100%;background:var(--gold);width:100%;transition:width .1s linear}
+
+/* ── WINNER POSITIONS DISPLAY ── */
+.gameover-rankings{
+  display:flex;flex-direction:column;gap:6px;margin:12px 0 20px;
+  max-height:200px;overflow-y:auto;
+}
+.rank-row{
+  display:flex;align-items:center;gap:10px;padding:8px 14px;
+  border-radius:10px;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);font-size:13px;
+}
+.rank-row.rank-1{border-color:rgba(255,215,0,.35);background:rgba(255,215,0,.06)}
+.rank-row.rank-last{border-color:rgba(192,57,43,.35);background:rgba(192,57,43,.06)}
+.rank-pos{font-size:20px;width:28px;text-align:center;flex-shrink:0}
+.rank-name{flex:1;color:var(--text)}
+.rank-amount{font-size:14px;font-family:'Playfair Display',serif}
+.rank-amount.plus{color:#2ecc71}
+.rank-amount.minus{color:var(--red2)}
+
+/* ── TRANSFER DROP ZONE ── */
+.transfer-zone{
+  display:none;
+  position:absolute;
+  top:50%;left:calc(50% + 120px);
+  transform:translateY(-50%);
+  width:72px;height:100px;
+  border:2px dashed rgba(201,168,76,0.45);border-radius:10px;
+  background:rgba(201,168,76,0.06);
+  flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;cursor:default;z-index:20;
+  transition:border-color .15s,background .15s;
+}
+.transfer-zone.visible{display:flex}
+.transfer-zone.drag-over-transfer{
+  border-color:var(--gold);border-style:solid;
+  background:rgba(201,168,76,0.22);
+  box-shadow:0 0 16px rgba(201,168,76,0.35);
+}
+.transfer-zone-icon{font-size:20px;color:var(--gold);opacity:.75}
+.transfer-zone-label{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);opacity:.75;text-align:center}
+@keyframes fadeInScale{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+
+/* ── CARD DEAL ANIMATION ── */
+/* ── DEAL ANIMATION OVERLAY ── */
+#deal-overlay{
+  position:fixed;inset:0;z-index:200;pointer-events:none;
+  display:none;
+}
+#deal-overlay.active{display:block}
+.deal-card-fly{
+  position:fixed;
+  width:var(--card-w);height:var(--card-h);
+  background:linear-gradient(145deg,#1a3a7a,#0e2456);
+  border:2px solid rgba(255,255,255,.2);border-radius:8px;
+  pointer-events:none;z-index:201;
+  will-change:transform,opacity;
+}
+.deal-card-fly::before{
+  content:'';position:absolute;inset:4px;
+  border:1px solid rgba(255,255,255,.12);border-radius:5px;
+  background:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.04) 4px,rgba(255,255,255,.04) 8px)
+}
+
+/* ── OUT BADGE ── */
+.out-badge{
+  font-size:10px;
+  color:#2ecc71;padding:2px 8px;border-radius:10px;
+  display:inline-flex;align-items:center;gap:4px;margin-top:2px;
+  background:rgba(46,204,113,.15);border:1px solid rgba(46,204,113,.5);
+}
+.out-place-1{background:rgba(255,215,0,.15);border-color:rgba(255,215,0,.5);color:#ffd700}
+.out-place-2{background:rgba(192,192,192,.15);border-color:rgba(192,192,192,.5);color:#c0c0c0}
+.out-place-3{background:rgba(205,127,50,.15);border-color:rgba(205,127,50,.5);color:#cd7f32}
+
+/* ── ACTION BUTTON GLOW ── */
+.btn-primary.pulse-cta{animation:ctaPulse 2s infinite}
+@keyframes ctaPulse{0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,.5)}50%{box-shadow:0 0 0 6px rgba(201,168,76,0)}}
+
+/* ── MOBILE-FIRST IMPROVEMENTS ── */
+@media(max-width:600px){
+  :root{--card-w:52px;--card-h:74px}
+  .poker-table{margin:6px 8px;border-width:4px;min-height:220px}
+  .deck-pile{right:6px;bottom:6px}
+  .trump-card-peek{right:6px;bottom:8px}
+  .top-bar{padding:8px 10px}
+  .top-bar-logo{font-size:16px}
+  .lobby-content{padding:12px 12px 60px}
+  .modal{padding:20px 16px}
+  .seats-grid{gap:10px}
+  .seat{width:88px;padding:14px 8px}
+  .my-hand-zone{min-height:100px;padding:8px 8px 12px}
+  .actions-bar{padding:6px 10px;gap:6px}
+  .btn{padding:7px 12px;font-size:10px}
+  .table-zone{max-width:75%}
+  .player-seat.top{top:4px}
+  .player-seat.left{left:4px}
+  .player-seat.right{right:4px}
+  .player-seat-name{font-size:9px;max-width:60px}
+  .player-card-back{width:24px;height:34px}
+}
+
+@media(max-width:380px){
+  :root{--card-w:44px;--card-h:64px}
+  .player-card-back{width:20px;height:30px}
+}
+</style>
+</head>
+<body>
+
+<!-- Turn announce overlay -->
+<div id="turn-announce">
+  <div class="turn-announce-inner" id="turn-announce-inner">
+    <div class="turn-announce-who" id="turn-announce-who"></div>
+    <div class="turn-announce-role" id="turn-announce-role"></div>
+  </div>
+</div>
+
+<!-- Deal animation overlay -->
+<div id="deal-overlay"></div>
+
+<!-- Loading -->
+<div class="screen active" id="screen-loading">
+  <div class="loading-logo">♠ Durak</div>
+  <div class="loading-sub">Loading…</div>
+</div>
+
+<!-- Lobby -->
+<div class="screen" id="screen-lobby">
+  <div class="top-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="/" class="back-link">←</a>
+      <div class="top-bar-logo">♠ Durak</div>
+    </div>
+    <div class="user-info">
+      <div class="balance-chip" id="balance-display">$—</div>
+      <img class="user-avatar" id="user-avatar" src="" alt="" style="display:none">
+      <span class="user-name-small" id="user-name-display"></span>
+      <button class="btn-logout" onclick="doLogout()">Out</button>
+    </div>
+  </div>
+
+  <div class="lobby-content">
+    <div class="lobby-hero">
+      <div class="lobby-title">Дурак</div>
+      <div class="lobby-tagline">The Russian Card Game</div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('rooms')">Rooms</button>
+
+      <button class="tab" onclick="switchTab('leaderboard')">Leaderboard</button>
+    </div>
+
+    <!-- ROOMS TAB -->
+    <div class="tab-panel active" id="tab-rooms">
+      <div class="rooms-header">
+        <div class="section-title" style="margin:0;padding:0;border:none">Active Rooms</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="refreshRooms()">↻ Refresh</button>
+          <button class="btn btn-primary" onclick="showCreateRoom()">+ Create Room</button>
+        </div>
+      </div>
+      <div class="rooms-list" id="rooms-list">
+        <div class="room-empty">No rooms open. Create one!</div>
+      </div>
+    </div>
+
+
+
+    <!-- LEADERBOARD TAB -->
+    <div class="tab-panel" id="tab-leaderboard">
+      <table class="lb-table">
+        <thead><tr><th class="lb-rank">#</th><th>Player</th><th>Balance</th></tr></thead>
+        <tbody id="lb-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Room waiting -->
+<div class="screen" id="screen-room">
+  <div class="top-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="#" class="back-link" onclick="leaveRoom();return false">←</a>
+      <div class="top-bar-logo" id="room-title-bar">Room</div>
+    </div>
+    <div class="user-info">
+      <div class="balance-chip" id="room-balance-display">$—</div>
+    </div>
+  </div>
+
+  <div class="room-waiting">
+    <div class="room-waiting-title" id="rw-name">Waiting…</div>
+    <div class="room-waiting-id" id="rw-id"></div>
+
+    <div class="room-info-row">
+      <div class="room-info-item"><div class="room-info-val" id="rw-bet">—</div><div>Bet</div></div>
+      <div class="room-info-item"><div class="room-info-val" id="rw-max">—</div><div>Max Players</div></div>
+      <div class="room-info-item"><div class="room-info-val" id="rw-trump">♠♥♦♣</div><div>Trump (after deal)</div></div>
+    </div>
+
+    <div class="seats-grid" id="seats-grid"></div>
+
+    <div class="bot-controls" id="bot-controls" style="display:none">
+      <span style="font-size:11px;color:var(--muted);align-self:center">Add bot:</span>
+      <button class="btn" onclick="addBot('easy')">Easy</button>
+      <button class="btn" onclick="addBot('medium')">Medium</button>
+      <button class="btn" onclick="addBot('hard')">Hard</button>
+      <button class="btn" onclick="addBot('cheater')">Cheater</button>
+    </div>
+
+    <div style="display:flex;gap:10px" id="room-actions">
+      <button class="btn btn-danger" onclick="leaveRoom()">Leave</button>
+      <button class="btn btn-primary" id="btn-start" style="display:none" onclick="startGame()">Start Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leave mid-game warning -->
+<div class="modal-overlay" id="modal-leave-game">
+  <div class="modal" style="position:relative;text-align:center;padding:36px 28px">
+    <div style="font-size:44px;margin-bottom:12px">⚠️</div>
+    <div class="modal-title">Leave the game?</div>
+    <p style="color:var(--muted);font-size:13px;line-height:1.7;margin-bottom:24px">Leaving counts as a loss.<br>Your bet is forfeited and opponents win.</p>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn" onclick="closeModal('modal-leave-game')">Stay In</button>
+      <button class="btn btn-danger" onclick="confirmLeaveGame()">Leave & Forfeit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Game -->
+<div class="screen" id="screen-game">
+  <div class="top-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="#" class="back-link" onclick="tryLeaveGame();return false">←</a>
+      <div class="top-bar-logo">♠ Durak</div>
+    </div>
+    <div class="status-bar" style="position:static;background:none;border:none;padding:0">
+      <div class="status-indicator">
+        <div class="status-dot" id="phase-dot"></div>
+        <span id="phase-label" style="font-size:11px;color:var(--muted)">—</span>
+      </div>
+    </div>
+    <div class="balance-chip" id="game-balance-display">$—</div>
+  </div>
+
+  <div class="game-wrap">
+    <div class="poker-table" id="poker-table">
+      <!-- Timer bar at top of table -->
+      <div class="timer-bar-wrap" id="timer-bar-wrap" style="display:none"><div class="timer-bar" id="timer-bar"></div></div>
+      <!-- Turn timer pill -->
+      <div class="turn-timer" id="turn-timer">⏱ 30s</div>
+      <!-- Pile-on countdown removed -->
+      <!-- Transfer hint -->
+      <div class="transfer-zone" id="transfer-zone">
+        <div class="transfer-zone-icon">↪</div>
+        <div class="transfer-zone-label">Transfer</div>
+      </div>
+      <!-- Trump indicator -->
+      <div class="trump-display">
+        <div class="trump-suit" id="trump-suit">♠</div>
+        <div class="trump-label">Trump</div>
+      </div>
+
+      <!-- Players -->
+      <div class="player-seat top" id="seat-top" style="display:none"></div>
+      <div class="player-seat left" id="seat-left" style="display:none"></div>
+      <div class="player-seat right" id="seat-right" style="display:none"></div>
+
+      <!-- Table cards -->
+      <div class="table-zone" id="table-zone"></div>
+
+      <!-- Deck -->
+      <div class="deck-pile" id="deck-pile">
+        <div class="deck-card-back" id="deck-card"></div>
+        <div class="deck-count" id="deck-count">36</div>
+      </div>
+      <div class="trump-card-peek" id="trump-card-peek"></div>
+    </div>
+
+    <!-- My hand (bottom) -->
+    <div class="my-hand-zone" id="my-hand-zone">
+      <div class="my-hand-label">Your Hand</div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions-bar" id="actions-bar">
+      <div class="action-hint" id="action-hint">Waiting for game to start…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Game over overlay -->
+<div class="gameover-overlay" id="gameover-overlay">
+  <div class="gameover-card">
+    <div class="gameover-emoji" id="go-emoji">🃏</div>
+    <div class="gameover-title" id="go-title">Game Over</div>
+    <div class="gameover-sub" id="go-sub"></div>
+    <div class="gameover-rankings" id="go-rankings"></div>
+    <div class="gameover-pot" id="go-pot"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn" onclick="backToLobby()">Back to Lobby</button>
+      <button class="btn btn-primary" onclick="playAgain()">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<!-- Broke overlay -->
+<div class="broke-overlay" id="broke-overlay">
+  <div class="gameover-card">
+    <div class="gameover-emoji">💸</div>
+    <div class="gameover-title">You're Broke!</div>
+    <div class="gameover-sub">Watch an ad to receive $100 and keep playing.</div>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="watchAd()">Watch Ad → Get $100</button>
+  </div>
+</div>
+
+<!-- Create Room Modal -->
+<div class="modal-overlay" id="modal-create">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-create')">✕</button>
+    <div class="modal-title">Create Room</div>
+    <div class="modal-row">
+      <div class="modal-label">Room Name</div>
+      <input class="input input-lg" id="cr-name" placeholder="e.g. Stas's Table" maxlength="40">
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">Bet Amount</div>
+      <div class="range-row">
+        <input type="range" id="cr-bet-range" min="10" max="500" step="10" value="50" oninput="updateBetDisplay()">
+        <span class="range-val" id="cr-bet-val">$50</span>
+      </div>
+      <div class="helper" id="cr-balance-hint"></div>
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">Max Players (2–4)</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="mp-2" onclick="setMaxPlayers(2)">2</button>
+        <button class="btn" id="mp-3" onclick="setMaxPlayers(3)">3</button>
+        <button class="btn btn-primary" id="mp-4" onclick="setMaxPlayers(4)">4</button>
+      </div>
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">Password (optional)</div>
+      <input class="input input-lg" id="cr-password" placeholder="Leave empty for public" maxlength="20">
+    </div>
+    <div class="error-msg" id="cr-error"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-create')">Cancel</button>
+      <button class="btn btn-primary" onclick="createRoom()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Join Password Modal -->
+<div class="modal-overlay" id="modal-join">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-join')">✕</button>
+    <div class="modal-title">Enter Password</div>
+    <div class="modal-row">
+      <input class="input input-lg" id="join-password" placeholder="Room password" type="password">
+    </div>
+    <div class="error-msg" id="join-error"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-join')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmJoin()">Join</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── AUTH ─────────────────────────────────────
+let myToken = sessionStorage.getItem('auth_token');
+let myUser  = null;  // { sub, name, balance }
+let socket  = null;
+let currentRoom = null;  // room snapshot
+let gameData    = null;  // live game state
+let selectedCard = null;
+let selectedAttackCard = null;
+let joinTarget  = null;  // pending room join
+let maxPlayersChoice = 4;
+
+// Timer state
+let turnTimer = null;
+let turnTimerEnd = null;
+let turnTimerDuration = 30000; // 30s
+
+async function init() {
+  myToken = sessionStorage.getItem('auth_token');
+  if(!myToken) { window.location.href = '/'; return; }
+  // Check token not expired
+  try {
+    const p = JSON.parse(atob(myToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    if(p.exp && p.exp < Math.floor(Date.now()/1000)) {
+      sessionStorage.removeItem('auth_token'); window.location.href = '/'; return;
+    }
+  } catch(e) { sessionStorage.removeItem('auth_token'); window.location.href = '/'; return; }
+
+  const me = await apiFetch('/api/me');
+  if(me.error) { sessionStorage.removeItem('auth_token'); window.location.href = '/'; return; }
+  myUser = me;
+
+  updateBalanceDisplays();
+  updateUserUI();
+  connectSocket();
+  showScreen('lobby');
+  refreshRooms();
+  loadLeaderboard();
+}
+
+async function apiFetch(url, opts={}) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+myToken, ...(opts.headers||{}) }
+  });
+  return res.json();
+}
+
+function updateBalanceDisplays() {
+  const txt = '$' + (myUser?.balance ?? '—');
+  document.getElementById('balance-display').textContent = txt;
+  document.getElementById('room-balance-display').textContent = txt;
+  document.getElementById('game-balance-display').textContent = txt;
+}
+
+function updateUserUI() {
+  document.getElementById('user-name-display').textContent = myUser?.name || '';
+}
+
+function doLogout() {
+  sessionStorage.removeItem('auth_token');
+  window.location.href = '/';
+}
+
+// ─── SOCKET ───────────────────────────────────
+function connectSocket() {
+  socket = io({ auth: { token: myToken } });
+
+  socket.on('connect', () => {
+    console.log('Socket connected');
+    if(currentRoom) socket.emit('room:get', (r) => { if(r.room) updateRoomUI(r.room); });
+  });
+
+  socket.on('rooms:updated', refreshRooms);
+
+  socket.on('room:state', (room) => {
+    currentRoom = room;
+    updateRoomUI(room);
+  });
+
+  socket.on('room:kicked', () => {
+    showToast('You were kicked from the room');
+    showScreen('lobby');
+    currentRoom = null;
+  });
+
+  socket.on('game:started', (state) => {
+    gameData = state;
+    _lastAnnouncedAttacker = -1;
+    showScreen('game');
+    renderGame();
+    playDealAnimation(state, () => {
+      startTurnTimer(state);
+      showTurnAnnounce(state);
+    });
+  });
+
+  socket.on('game:state', (state) => {
+    const prevPhase = gameData?.phase;
+    const prevAttacker = gameData?.attackerIdx;
+    const prevDefender = gameData?.defenderIdx;
+    const prevTableLen = gameData?.table?.length || 0;
+    const prevTableHadCards = prevTableLen > 0;
+    const newTableEmpty = !state.table || state.table.length === 0;
+
+    // Detect turn change — only when attacker/defender seat actually changed
+    const turnChanged = state.phase === 'attack' &&
+                        (state.attackerIdx !== prevAttacker || state.defenderIdx !== prevDefender);
+
+    // If table just cleared (successful defense) — animate before re-render
+    if(prevTableHadCards && newTableEmpty && prevPhase === 'defend') {
+      animateClearTable(() => {
+        gameData = state;
+        renderGame();
+        if(turnChanged) showTurnAnnounce(state);
+      });
+    } else {
+      gameData = state;
+      renderGame();
+      if(turnChanged) showTurnAnnounce(state);
+    }
+
+    // Restart turn timer if turn changed
+    if(state.phase !== prevPhase || state.attackerIdx !== prevAttacker || state.defenderIdx !== prevDefender) {
+      startTurnTimer(state);
+    }
+
+  });
+
+  socket.on('game:over', async (data) => {
+    // Refresh balance
+    const me = await apiFetch('/api/me');
+    myUser = me;
+    updateBalanceDisplays();
+    showGameOver(data);
+  });
+
+  socket.on('connect_error', (e) => {
+    console.error('Socket error:', e.message);
+    showToast('Connection error: ' + e.message);
+  });
+}
+
+// ─── TIMER FUNCTIONS ──────────────────────────
+function startTurnTimer(state) {
+  stopTurnTimer();
+  if(!state || state.phase === 'done') return;
+
+  const g = state || gameData;
+  if(!g) return;
+  const mySub = myUser.sub;
+  const isMyTurn = (g.players[g.attackerIdx]?.sub === mySub && g.phase === 'attack') ||
+                   (g.players[g.defenderIdx]?.sub === mySub && g.phase === 'defend');
+
+  const duration = 30000; // 30 seconds
+  turnTimerEnd = Date.now() + duration;
+
+  const timerEl = document.getElementById('turn-timer');
+  const barWrap = document.getElementById('timer-bar-wrap');
+  const bar = document.getElementById('timer-bar');
+
+  if(isMyTurn) {
+    barWrap.style.display = 'block';
+    timerEl.classList.add('active');
+  } else {
+    barWrap.style.display = 'none';
+    timerEl.classList.remove('active');
+  }
+
+  function tick() {
+    const remaining = Math.max(0, turnTimerEnd - Date.now());
+    const pct = remaining / duration * 100;
+    const secs = Math.ceil(remaining / 1000);
+
+    if(isMyTurn) {
+      bar.style.width = pct + '%';
+      timerEl.textContent = '⏱ ' + secs + 's';
+    }
+
+    if(remaining < 8000) {
+      timerEl.classList.add('urgent');
+      bar.classList.add('urgent');
+    } else {
+      timerEl.classList.remove('urgent');
+      bar.classList.remove('urgent');
+    }
+
+    // Update player seat timer bars
+    document.querySelectorAll('.player-seat-timer-bar').forEach(b => {
+      b.style.width = pct + '%';
+      if(remaining < 8000) b.style.background = '#ff6b6b';
+      else b.style.background = '';
+    });
+
+    if(remaining <= 0) {
+      stopTurnTimer();
+      // Auto action when time runs out
+      if(isMyTurn && gameData) {
+        const g2 = gameData;
+        const isAtk = g2.players[g2.attackerIdx]?.sub === mySub && g2.phase === 'attack';
+        const isDef = g2.players[g2.defenderIdx]?.sub === mySub && g2.phase === 'defend';
+        if(isAtk && g2.table.length > 0) {
+          showToast('Time up! Ending attack…');
+          doEndAttack();
+        } else if(isAtk && g2.table.length === 0) {
+          // Pick a random card to attack with
+          const card = g2.myCards[Math.floor(Math.random() * g2.myCards.length)];
+          if(card) { showToast('Time up! Auto-attacking…'); doAttack(card); }
+        } else if(isDef) {
+          showToast('Time up! Taking cards…');
+          doTake();
+        }
+      }
+      return;
+    }
+    turnTimer = requestAnimationFrame(tick);
+  }
+  turnTimer = requestAnimationFrame(tick);
+}
+
+function stopTurnTimer() {
+  if(turnTimer) { cancelAnimationFrame(turnTimer); turnTimer = null; }
+  const timerEl = document.getElementById('turn-timer');
+  const barWrap = document.getElementById('timer-bar-wrap');
+  if(timerEl) { timerEl.classList.remove('active','urgent'); timerEl.textContent = '⏱ 30s'; }
+  if(barWrap) { barWrap.style.display = 'none'; }
+  const bar = document.getElementById('timer-bar');
+  if(bar) { bar.style.width = '100%'; bar.classList.remove('urgent'); }
+}
+
+// ─── SCREENS ──────────────────────────────────
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+}
+
+// ─── TABS ─────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='leaderboard') loadLeaderboard();
+
+}
+
+// ─── ROOMS ────────────────────────────────────
+function refreshRooms() {
+  if(!socket) return;
+  socket.emit('rooms:list', ({ rooms }) => {
+    const el = document.getElementById('rooms-list');
+    if(!rooms.length) { el.innerHTML = '<div class="room-empty">No open rooms. Create one!</div>'; return; }
+    el.innerHTML = rooms.map(r => `
+      <div class="room-card" onclick="joinRoom('${r.id}','${r.hasPassword}')">
+        <div class="room-card-icon">🃏</div>
+        <div class="room-card-info">
+          <div class="room-card-name">${esc(r.name)}</div>
+          <div class="room-card-meta">Host: ${esc(r.hostName)} · ${r.totalPlayers}/${r.maxPlayers} players${r.botCount?' ('+r.botCount+' bots)':''}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="room-card-bet">$${r.bet}</div>
+          <div class="room-card-players">${r.hasPassword?'🔒 Private':'🌐 Public'}</div>
+        </div>
+      </div>
+    `).join('');
+  });
+}
+
+function showCreateRoom() {
+  const bal = myUser?.balance || 0;
+  const max = Math.min(bal, 500);
+  const range = document.getElementById('cr-bet-range');
+  range.max = max;
+  if(parseInt(range.value) > max) range.value = Math.min(50, max);
+  document.getElementById('cr-balance-hint').textContent = `Your balance: $${bal}`;
+  document.getElementById('cr-name').value = (myUser?.name||'') + "'s Table";
+  updateBetDisplay();
+  openModal('modal-create');
+}
+
+function updateBetDisplay() {
+  document.getElementById('cr-bet-val').textContent = '$' + document.getElementById('cr-bet-range').value;
+}
+
+function setMaxPlayers(n) {
+  maxPlayersChoice = n;
+  [2,3,4].forEach(x => {
+    const b = document.getElementById('mp-'+x);
+    b.className = 'btn' + (x===n?' btn-primary':'');
+  });
+}
+
+function createRoom() {
+  const name = document.getElementById('cr-name').value.trim() || (myUser.name+"'s Table");
+  const bet  = parseInt(document.getElementById('cr-bet-range').value);
+  const pass = document.getElementById('cr-password').value.trim();
+  document.getElementById('cr-error').textContent = '';
+
+  socket.emit('room:create', { name, bet, maxPlayers: maxPlayersChoice, password: pass }, (res) => {
+    if(res.error) { document.getElementById('cr-error').textContent = res.error; return; }
+    closeModal('modal-create');
+    currentRoom = { ...res.room, hostSub: myUser.sub };
+    enterRoom(res.roomId);
+  });
+}
+
+function joinRoom(roomId, hasPassword) {
+  if(hasPassword === 'true') {
+    joinTarget = roomId;
+    document.getElementById('join-password').value = '';
+    document.getElementById('join-error').textContent = '';
+    openModal('modal-join');
+    return;
+  }
+  doJoinRoom(roomId, '');
+}
+
+function confirmJoin() {
+  const pw = document.getElementById('join-password').value;
+  if(!joinTarget) return;
+  document.getElementById('join-error').textContent = '';
+  doJoinRoom(joinTarget, pw);
+}
+
+function doJoinRoom(roomId, password) {
+  socket.emit('room:join', { roomId, password }, (res) => {
+    if(res.error) {
+      document.getElementById('join-error').textContent = res.error || res;
+      if(!document.getElementById('modal-join').classList.contains('show')) showToast(res.error);
+      return;
+    }
+    closeModal('modal-join');
+    joinTarget = null;
+    enterRoom(roomId);
+  });
+}
+
+function enterRoom(roomId) {
+  showScreen('room');
+  socket.emit('room:get', (r) => {
+    if(r.room) { currentRoom = r.room; updateRoomUI(r.room); }
+  });
+}
+
+function updateRoomUI(room) {
+  currentRoom = room;
+  document.getElementById('rw-name').textContent = room.name;
+  document.getElementById('room-title-bar').textContent = room.name;
+  document.getElementById('rw-id').textContent = 'Room ID: ' + room.id;
+  document.getElementById('rw-bet').textContent = '$' + room.bet;
+  document.getElementById('rw-max').textContent = room.maxPlayers;
+
+  const isHost = room.hostSub === myUser.sub;
+  document.getElementById('bot-controls').style.display = isHost && room.totalPlayers < room.maxPlayers ? 'flex' : 'none';
+  const btnStart = document.getElementById('btn-start');
+  btnStart.style.display = isHost ? 'inline-block' : 'none';
+  btnStart.disabled = room.totalPlayers < 2;
+
+  // Render seats
+  const grid = document.getElementById('seats-grid');
+  grid.innerHTML = '';
+  for(let i=0; i<room.maxPlayers; i++) {
+    const p = room.players[i];
+    const div = document.createElement('div');
+    div.className = 'seat' + (p ? ' occupied' : ' empty');
+    if(p) {
+      div.innerHTML = `
+        <div class="seat-avatar">${p.isBot?'🤖':'👤'}</div>
+        <div class="seat-name">${esc(p.name)}</div>
+        <div class="seat-tag">${p.isBot?(p.difficulty||'bot'):'Human'}</div>
+        ${p.sub===room.hostSub?'<div class="seat-host-badge">Host</div>':''}
+        ${isHost && p.isBot?`<button class="btn btn-danger" style="margin-top:8px;padding:4px 8px;font-size:9px" onclick="removeBot('${p.sub}')">Remove</button>`:''}
+      `;
+    } else {
+      div.innerHTML = `<div class="seat-avatar" style="opacity:.3">—</div><div class="seat-name" style="opacity:.3">Empty</div>`;
+    }
+    grid.appendChild(div);
+  }
+}
+
+function addBot(difficulty) {
+  socket.emit('room:addBot', { difficulty }, (res) => {
+    if(res?.error) showToast(res.error);
+  });
+}
+
+function removeBot(botSub) {
+  socket.emit('room:removeBot', { botSub }, (res) => {
+    if(res?.error) showToast(res.error);
+  });
+}
+
+function leaveRoom() {
+  socket.emit('room:leave');
+  currentRoom = null;
+  showScreen('lobby');
+  refreshRooms();
+}
+
+function startGame() {
+  socket.emit('room:start', (res) => {
+    if(res?.error) showToast(res.error);
+  });
+}
+
+// ─── GAME RENDER ──────────────────────────────
+function isRed(s) { return s==='♥'||s==='♦'; }
+
+function makeCardEl(card, selectable=false, selected=false, isTrump=false) {
+  const el = document.createElement('div');
+  const color = isRed(card.s) ? 'red' : 'black';
+  el.className = 'card ' + color + (selectable?' selectable':'') + (selected?' selected':'') + (isTrump?' trump-card':'');
+  el.dataset.r = card.r; el.dataset.s = card.s;
+  el.innerHTML = `
+    <div class="card-tl"><div class="card-rank">${card.r}</div><div class="card-suit-s">${card.s}</div></div>
+    <div class="card-center">${card.s}</div>
+    <div class="card-br"><div class="card-rank">${card.r}</div><div class="card-suit-s">${card.s}</div></div>
+  `;
+  return el;
+}
+
+function makeCardBack() {
+  const el = document.createElement('div');
+  el.className = 'player-card-back';
+  return el;
+}
+
+// ─── DRAG STATE ───────────────────────────────
+let drag = { active:false, card:null, ghost:null, touchId:null };
+
+function startDrag(card, sourceEl, clientX, clientY) {
+  drag.active = true;
+  drag.card = card;
+  drag.sourceEl = sourceEl;
+  sourceEl.classList.add('dragging');
+
+  // Create ghost
+  let ghost = document.getElementById('drag-ghost');
+  if(!ghost){ ghost=document.createElement('div'); ghost.id='drag-ghost'; document.body.appendChild(ghost); }
+  ghost.innerHTML = sourceEl.outerHTML;
+  ghost.style.display = 'block';
+  ghost.style.width = sourceEl.offsetWidth + 'px';
+  ghost.style.height = sourceEl.offsetHeight + 'px';
+  ghost.style.left = (clientX - sourceEl.offsetWidth/2) + 'px';
+  ghost.style.top  = (clientY - sourceEl.offsetHeight/2) + 'px';
+  drag.ghost = ghost;
+
+  setupDropZones();
+}
+
+function moveDrag(clientX, clientY) {
+  if(!drag.active||!drag.ghost) return;
+  drag.ghost.style.left = (clientX - drag.ghost.offsetWidth/2) + 'px';
+  drag.ghost.style.top  = (clientY - drag.ghost.offsetHeight/2) + 'px';
+
+  // Highlight the poker table as drop zone
+  const pt = document.getElementById('poker-table');
+  if(pt) {
+    const r = pt.getBoundingClientRect();
+    const over = clientX>=r.left && clientX<=r.right && clientY>=r.top && clientY<=r.bottom;
+    const tz = document.getElementById('table-zone');
+    if(tz) tz.classList.toggle('drag-over', over);
+    // Highlight specific pair for defend
+    if(tz) {
+      tz.querySelectorAll('.table-pair[data-idx]').forEach(p => {
+        const pr = p.getBoundingClientRect();
+        const hit = clientX>=pr.left-14 && clientX<=pr.right+14 && clientY>=pr.top-14 && clientY<=pr.bottom+14;
+        p.classList.toggle('drop-highlight', hit);
+      });
+    }
+    // Highlight transfer zone if visible
+    const trZone = document.getElementById('transfer-zone');
+    if(trZone && trZone.classList.contains('visible')) {
+      const tr = trZone.getBoundingClientRect();
+      const onTr = clientX>=tr.left-10 && clientX<=tr.right+10 && clientY>=tr.top-10 && clientY<=tr.bottom+10;
+      trZone.classList.toggle('drag-over-transfer', onTr);
+    }
+  }
+}
+
+function endDrag(clientX, clientY) {
+  if(!drag.active) return;
+  drag.active = false;
+  drag.ghost && (drag.ghost.style.display='none');
+  drag.sourceEl && drag.sourceEl.classList.remove('dragging');
+
+  const g = gameData;
+  const mySub = myUser.sub;
+  const isMyAttack = g.players[g.attackerIdx]?.sub===mySub && g.phase==='attack';
+  const isMyDefend = g.players[g.defenderIdx]?.sub===mySub && g.phase==='defend';
+  const isPreTakeAttack = g.players[g.attackerIdx]?.sub===mySub && g.phase==='pre-take';
+
+  document.querySelectorAll('.drop-zone').forEach(z=>z.classList.remove('drag-over'));
+  document.querySelectorAll('.drop-highlight').forEach(z=>z.classList.remove('drop-highlight'));
+  const trZone2 = document.getElementById('transfer-zone');
+  if(trZone2) trZone2.classList.remove('drag-over-transfer');
+
+  // Find drop target
+  // Use the whole poker table as drop zone for attack (table-zone may be tiny when empty)
+  const pokerTable = document.getElementById('poker-table');
+  const ptr = pokerTable.getBoundingClientRect();
+  const onPoker = clientX>=ptr.left && clientX<=ptr.right && clientY>=ptr.top && clientY<=ptr.bottom;
+
+  // Also check if dropped in my hand zone (cancel)
+  const handZone = document.getElementById('my-hand-zone');
+  const hzr = handZone.getBoundingClientRect();
+  const inHand = clientX>=hzr.left && clientX<=hzr.right && clientY>=hzr.top && clientY<=hzr.bottom;
+
+  if(!onPoker || inHand) { drag.card=null; return; }
+  if(!drag.card?.r) { drag.card=null; return; } // null guard
+
+  if(isMyAttack) {
+    if(g.table.length > 0) {
+      const ranks = new Set(g.table.flatMap(p=>[p.attack?.r, p.defense?.r].filter(Boolean)));
+      if(!ranks.has(drag.card.r)) { showToast('Rank '+drag.card.r+' not on table'); drag.card=null; return; }
+    }
+    doAttack(drag.card);
+  } else if(isPreTakeAttack) {
+    // Drag card to table during pre-take window
+    const ranks = new Set(g.table.flatMap(p=>[p.attack?.r,p.defense?.r].filter(Boolean)));
+    if(ranks.has(drag.card.r)) {
+      socket.emit('game:preTakeAdd', { card: drag.card }, res=>{
+        if(res?.error) showToast(res.error);
+        selectedCard=null;
+      });
+    } else {
+      showToast('Card rank not on table');
+    }
+  } else if(isMyDefend) {
+    // Auto-detect: if all table attacks share the same rank, nothing is defended yet,
+    // and the dragged card has that same rank → it's a TRANSFER
+    const tableRank = g.table[0]?.attack.r;
+    const canAutoTransfer = g.table.length > 0
+      && !g.table.some(p => p.defense)
+      && g.table.every(p => p.attack.r === tableRank)
+      && drag.card.r === tableRank;
+    if(canAutoTransfer) {
+      doTransfer(drag.card);
+      drag.card = null;
+      return;
+    }
+    // Otherwise: find which attack pair was dropped on and defend
+    const tableZone = document.getElementById('table-zone');
+    let targetPair = null;
+    tableZone.querySelectorAll('.table-pair[data-idx]').forEach(pair => {
+      const pr = pair.getBoundingClientRect();
+      if(clientX>=pr.left-32 && clientX<=pr.right+32 && clientY>=pr.top-32 && clientY<=pr.bottom+32) {
+        const idx = parseInt(pair.dataset.idx);
+        if(!g.table[idx]?.defense) targetPair = g.table[idx];
+      }
+    });
+    if(targetPair) {
+      doDefend(targetPair.attack, drag.card);
+    } else {
+      const first = g.table.find(p=>!p.defense);
+      if(first) doDefend(first.attack, drag.card);
+      else showToast('No card to defend against');
+    }
+  }
+  drag.card = null;
+}
+
+function setupDropZones() {
+  const tableZone = document.getElementById('table-zone');
+  tableZone.classList.add('drop-zone');
+}
+
+function renderGame() {
+  if(!gameData) return;
+  const g = gameData;
+  const players = g.players;
+  const mySub = myUser.sub;
+  const myIdx = players.findIndex(p=>p.sub===mySub);
+  const n = players.length;
+
+  // Show transfer zone when defender can redirect (all same rank, none defended yet)
+  const mySub2 = myUser.sub;
+  const canTransfer = players[g.defenderIdx]?.sub === mySub2
+    && g.phase === 'defend'
+    && g.table.length > 0
+    && !g.table.some(p=>p.defense)
+    && g.table.every(p=>p.attack.r === g.table[0].attack.r);
+  const tzEl = document.getElementById('transfer-zone');
+  if(tzEl) tzEl.classList.toggle('visible', !!canTransfer);
+
+  // Phase indicator
+  const dot = document.getElementById('phase-dot');
+  const lbl = document.getElementById('phase-label');
+  const attacker = players[g.attackerIdx];
+  const defender = players[g.defenderIdx];
+  if(g.phase==='attack') {
+    dot.className='status-dot attack';
+    lbl.textContent = (attacker?.sub===mySub?'Your turn':attacker?.name||'?') + ' attacks';
+  } else if(false) {
+    dot.className='status-dot attack';
+    lbl.textContent = '⚡ Pile-on window — ' + (attacker?.sub===mySub?'you can add cards':attacker?.name+' attacking');
+  } else if(g.phase==='defend') {
+    dot.className='status-dot defend';
+    lbl.textContent = (defender?.sub===mySub?'Your turn':defender?.name||'?') + ' defends';
+  }
+
+  document.getElementById('trump-suit').textContent = g.trump;
+
+  const pt = document.getElementById('poker-table');
+
+
+  // Deck
+  const deckEl = document.getElementById('deck-card');
+  document.getElementById('deck-count').textContent = g.deckCount + ' left';
+  deckEl.style.opacity = g.deckCount===0 ? '0.2' : '1';
+
+  // Trump peek — face-up trump card sticking out to the left of the deck
+  const peekZone = document.getElementById('trump-card-peek');
+  const trumpKey = g.trump + '_' + g.deckCount;
+  if(peekZone._trumpKey !== trumpKey) {
+    peekZone._trumpKey = trumpKey;
+    peekZone.innerHTML='';
+    if(g.deckCount > 0 && g.trumpCard) {
+      // Render as a real face-up card
+      const tc = makeCardEl(g.trumpCard, false, false, true);
+      peekZone.appendChild(tc);
+    } else if(g.deckCount > 0) {
+      // Fallback: styled box showing just the suit
+      const tc = document.createElement('div');
+      tc.style.cssText=`width:var(--card-w);height:var(--card-h);background:#fdf6e3;border:1px solid rgba(0,0,0,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:28px;color:${isRed(g.trump)?'#c0392b':'#1a1a1a'};box-shadow:1px 2px 6px rgba(0,0,0,.4)`;
+      tc.textContent=g.trump;
+      peekZone.appendChild(tc);
+    }
+  }
+
+  // Table zone — with animations on new cards
+  const tableZone = document.getElementById('table-zone');
+  const prevCount = parseInt(tableZone.dataset.count||'0');
+  const prevDefenses = (tableZone.dataset.defenses||'').split(',').filter(Boolean);
+  const newCount = g.table.length;
+  tableZone.dataset.count = newCount;
+  tableZone.dataset.defenses = g.table.map((p,i)=>p.defense?i:'').filter(x=>x!=='').join(',');
+  tableZone.innerHTML='';
+  tableZone.classList.add('drop-zone');
+  g.table.forEach((pair, idx) => {
+    const wrapper = document.createElement('div');
+    wrapper.className='table-pair';
+    wrapper.dataset.idx = idx;
+    wrapper.style.cssText='position:relative;width:var(--card-w);height:calc(var(--card-h) + 22px)';
+    const attEl = makeCardEl(pair.attack);
+    attEl.style.cssText='position:absolute;top:0;left:0';
+    // New attack card — play-down animation
+    if(idx >= prevCount) {
+      attEl.classList.add('card-play-down');
+      attEl.style.animationDelay = (idx - prevCount) * 60 + 'ms';
+    }
+    wrapper.appendChild(attEl);
+    if(pair.defense) {
+      const defEl = makeCardEl(pair.defense);
+      defEl.style.cssText='position:absolute;top:18px;left:8px;transform:rotate(10deg)';
+      // New defense — slide-in
+      if(!prevDefenses.includes(String(idx))) {
+        defEl.classList.add('def-anim');
+      }
+      wrapper.appendChild(defEl);
+    }
+    tableZone.appendChild(wrapper);
+  });
+
+  // Other players — clockwise seating
+  // Clockwise from myIdx: +1=left, +2=top, +3=right
+  const seatMap = {1:'seat-left', 2:'seat-top', 3:'seat-right'};
+  ['seat-top','seat-left','seat-right'].forEach(id=>{
+    const el=document.getElementById(id); el.innerHTML=''; el.style.display='none';
+  });
+  for(let offset=1; offset<n; offset++) {
+    const i = (myIdx+offset)%n;
+    const p = players[i];
+    const seatKey = n===2 ? 2 : offset; // 2 players: put opponent at top
+    const seatId = seatMap[seatKey];
+    if(!seatId) continue;
+    const seatEl = document.getElementById(seatId);
+    seatEl.style.display='flex';
+    const isAtt=i===g.attackerIdx, isDef=i===g.defenderIdx;
+    const isEmpty=(p.cardCount===0);
+    const finishPos = (g.finishOrder||[]).indexOf(p.sub); // -1 if not finished
+    const isOut = isEmpty && g.deckCount===0;
+    const badge=isAtt?'<span class="player-badge badge-attacker">⚔️ Attack</span>':isDef?'<span class="player-badge badge-defender">🛡 Defend</span>':'';
+    const placeEmoji = ['🥇','🥈','🥉'][finishPos] || '✓';
+    const placeClass = finishPos >= 0 ? `out-place-${finishPos+1}` : '';
+    const outBadge = isOut
+      ? `<div class="out-badge ${placeClass}">${placeEmoji} Out</div>`
+      : '';
+    const prevCards = parseInt(seatEl.dataset.cardCount||'0');
+    const cardsDelta = p.cardCount - prevCards;
+    seatEl.dataset.cardCount = p.cardCount;
+    const cardsHtml=Array(Math.max(0,p.cardCount)).fill(0).map((_,ci)=>{
+      const isNew = cardsDelta>0 && ci>=prevCards;
+      return `<div class="player-card-back${isNew?' card-anim':''}"></div>`;
+    }).join('');
+    if(isAtt||isDef) seatEl.classList.add('their-turn');
+    else seatEl.classList.remove('their-turn');
+    seatEl.innerHTML=`
+      <div class="player-seat-name" style="${isEmpty&&g.deckCount===0?'opacity:.4':''}">${esc(p.name)}</div>
+      ${badge}${outBadge}
+      <div class="player-seat-cards">${cardsHtml}</div>
+      ${((g.phase==='attack'&&isAtt)||(g.phase!=='attack'&&isDef))?'<div class="player-seat-timer"><div class="player-seat-timer-bar" id="pseat-timer-'+i+'"></div></div>':''}
+    `;
+  }
+
+  // My hand — with drag support
+  const handZone = document.getElementById('my-hand-zone');
+  while(handZone.children.length>1) handZone.removeChild(handZone.lastChild);
+
+  const isMyAttack = players[g.attackerIdx]?.sub===mySub && g.phase==='attack';
+  const isMyDefend = players[g.defenderIdx]?.sub===mySub && g.phase==='defend';
+  const isPreTakeAttack = players[g.attackerIdx]?.sub===mySub && g.phase==='pre-take';
+  const isPreTakeDefend = players[g.defenderIdx]?.sub===mySub && g.phase==='pre-take';
+  const canAct = isMyAttack || isMyDefend || isPreTakeAttack;
+
+  // Glow the hand zone on my turn
+  if(canAct) handZone.classList.add('my-turn');
+  else handZone.classList.remove('my-turn');
+
+  // Show "out" message if my hand is empty and deck is empty
+  if(g.myCards.length === 0 && g.deckCount === 0 && g.phase !== 'done') {
+    const myFinishPos = (g.finishOrder||[]).indexOf(myUser.sub);
+    const placeEmoji = ['🥇','🥈','🥉'][myFinishPos] || '✓';
+    const placeText  = myFinishPos === 0 ? '1st out!' : myFinishPos === 1 ? '2nd out!' : myFinishPos === 2 ? '3rd out!' : 'Out!';
+    const placeClass = myFinishPos >= 0 ? `out-place-${myFinishPos+1}` : '';
+    const outDiv = document.createElement('div');
+    outDiv.style.cssText = 'width:100%;text-align:center;padding:16px 0;';
+    outDiv.innerHTML = `<div class="out-badge ${placeClass}" style="font-size:14px;padding:8px 24px;display:inline-flex">${placeEmoji} ${placeText} — Waiting for game to end…</div>`;
+    handZone.appendChild(outDiv);
+    renderActions(false, false, false, false, g);
+    return;
+  }
+
+  // Track how many cards I had before to detect new ones
+  const prevHandCount = parseInt(handZone.dataset.cardCount || '0');
+  const newHandCount = g.myCards.length;
+  handZone.dataset.cardCount = newHandCount;
+
+  for(const [ci, card] of g.myCards.entries()) {
+    const isSel = selectedCard?.r===card.r && selectedCard?.s===card.s;
+    const selectable = canAct;
+    const el = makeCardEl(card, selectable, isSel, card.s===g.trump);
+
+    // Stagger new cards coming into hand
+    if(ci >= prevHandCount) {
+      el.classList.add('card-draw');
+      el.style.animationDelay = (ci - prevHandCount) * 60 + 'ms';
+    } else {
+      // Existing cards: still stagger in on full re-render (game start)
+      if(prevHandCount === 0) {
+        el.classList.add('card-hand-in');
+        el.style.animationDelay = ci * 40 + 'ms';
+      }
+    }
+
+    if(selectable) {
+      // Click still works (tap on mobile)
+      el.addEventListener('click', () => onCardClick(card, isMyAttack, isMyDefend, isPreTakeAttack));
+
+      // Mouse drag
+      el.addEventListener('mousedown', e => {
+        if(e.button!==0) return;
+        e.preventDefault();
+        startDrag(card, el, e.clientX, e.clientY);
+      });
+
+      // Touch drag
+      el.addEventListener('touchstart', e => {
+        const t=e.touches[0];
+        drag.touchId=t.identifier;
+        startDrag(card, el, t.clientX, t.clientY);
+      }, {passive:true});
+    }
+    handZone.appendChild(el);
+  }
+
+  // Global drag move/end (set once)
+  if(!window._dragListened) {
+    window._dragListened=true;
+    document.addEventListener('mousemove', e=>{ if(drag.active) moveDrag(e.clientX,e.clientY); });
+    document.addEventListener('mouseup',   e=>{ if(drag.active) endDrag(e.clientX,e.clientY); });
+    document.addEventListener('touchmove', e=>{ if(!drag.active) return; e.preventDefault(); const t=[...e.touches].find(t=>t.identifier===drag.touchId); if(t) moveDrag(t.clientX,t.clientY); },{passive:false});
+    document.addEventListener('touchend',  e=>{ if(!drag.active) return; const t=[...e.changedTouches].find(t=>t.identifier===drag.touchId); if(t) endDrag(t.clientX,t.clientY); });
+  }
+
+  renderActions(isMyAttack, isMyDefend, isPreTakeAttack, isPreTakeDefend, g);
+}
+
+function onCardClick(card, isMyAttack, isMyDefend, isPreTakeAttack) {
+  if(isMyAttack || isPreTakeAttack) {
+    selectedCard = (selectedCard?.r===card.r && selectedCard?.s===card.s) ? null : card;
+    renderGame();
+  } else if(isMyDefend) {
+    // Auto-transfer: if all table attacks same rank, nothing defended, card matches rank
+    const tableRank = gameData?.table[0]?.attack.r;
+    const canAutoTransfer = gameData?.table.length > 0
+      && !gameData.table.some(p => p.defense)
+      && gameData.table.every(p => p.attack.r === tableRank)
+      && card.r === tableRank;
+    if(canAutoTransfer) {
+      doTransfer(card);
+      return;
+    }
+    if(!selectedAttackCard) {
+      showToast('Tap an attack card on the table first');
+      return;
+    }
+    doDefend(selectedAttackCard, card);
+  }
+}
+
+function renderActions(isMyAttack, isMyDefend, isPreTakeAttack, isPreTakeDefend, g) {
+  const bar = document.getElementById('actions-bar');
+  const hint = document.getElementById('action-hint');
+  while(bar.children.length>1) bar.removeChild(bar.lastChild);
+
+  if(g.phase==='done') { hint.textContent='Game over'; return; }
+
+  if(isMyAttack) {
+    const defHandSize = g.players[g.defenderIdx]?.cardCount ?? 0;
+    const atCapacity  = g.table.length >= defHandSize;
+    const allDefended = g.table.length > 0 && g.table.every(p=>p.defense);
+    hint.textContent = g.table.length===0
+      ? '⚔️ Your turn to attack — drag or tap a card'
+      : allDefended ? 'All defended — add another card or End Attack' : 'Attack placed — waiting for defense';
+    if(selectedCard && !atCapacity) {
+      const ranks = g.table.length>0 ? new Set(g.table.flatMap(p=>[p.attack?.r,p.defense?.r].filter(Boolean))) : null;
+      if(!ranks || ranks.has(selectedCard.r)) {
+        const btn = document.createElement('button');
+        btn.className='btn btn-primary pulse-cta';
+        btn.textContent='⚔️ Attack '+selectedCard.r+selectedCard.s;
+        btn.onclick=()=>doAttack(selectedCard);
+        bar.appendChild(btn);
+      }
+    }
+    if(allDefended) {
+      const btn2 = document.createElement('button');
+      btn2.className='btn';
+      btn2.textContent='✓ End Attack';
+      btn2.onclick=()=>doEndAttack();
+      bar.appendChild(btn2);
+    }
+  } else if(isMyDefend) {
+    const canTr = g.table.length>0 && !g.table.some(p=>p.defense) && g.table.every(p=>p.attack.r===g.table[0].attack.r);
+    hint.textContent = canTr
+      ? 'To transfer: drag a matching-rank card to the table. To defend: tap an attack card first'
+      : 'Drag a card onto an attack card to defend, or Take Cards';
+    const takeBtn = document.createElement('button');
+    takeBtn.className='btn btn-danger';
+    takeBtn.textContent='Take Cards';
+    takeBtn.onclick=()=>doTake();
+    bar.appendChild(takeBtn);
+  } else if(isPreTakeAttack) {
+    hint.textContent = 'Defender is taking! Add matching cards or click Done';
+    if(selectedCard) {
+      const ranks = new Set(g.table.flatMap(p=>[p.attack?.r,p.defense?.r].filter(Boolean)));
+      if(ranks.has(selectedCard.r)) {
+        const addBtn = document.createElement('button');
+        addBtn.className='btn btn-primary pulse-cta';
+        addBtn.textContent='Add '+selectedCard.r+selectedCard.s;
+        addBtn.onclick=()=>{ socket.emit('game:preTakeAdd', { card: selectedCard }, res=>{ if(res?.error) showToast(res.error); selectedCard=null; }); };
+        bar.appendChild(addBtn);
+      }
+    }
+    const doneBtn = document.createElement('button');
+    doneBtn.className='btn';
+    doneBtn.textContent='Done Adding';
+    doneBtn.onclick=()=>{ socket.emit('game:preTakeDone', res=>{ if(res?.error) showToast(res.error); selectedCard=null; }); };
+    bar.appendChild(doneBtn);
+  } else if(isPreTakeDefend) {
+    hint.textContent = 'Taking cards… attacker may add more first';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className='btn btn-danger';
+    confirmBtn.textContent='Take Cards Now';
+    confirmBtn.onclick=()=>doTake();
+    bar.appendChild(confirmBtn);
+  } else {
+    const attacker = gameData.players[gameData.attackerIdx];
+    const defender  = gameData.players[gameData.defenderIdx];
+    hint.textContent = gameData.phase==='attack'
+      ? (attacker?.name+' is attacking…')
+      : gameData.phase==='pre-take'
+        ? (gameData.players[gameData.defenderIdx]?.name||'?')+' is taking cards…'
+        : (defender?.name+' is defending…');
+  }
+
+  // Make table cards clickable for defend target selection
+  if(isMyDefend) {
+    document.querySelectorAll('#table-zone .table-pair').forEach((pair,i) => {
+      const atPair = gameData.table[i];
+      if(!atPair.defense) {
+        pair.style.cursor='pointer';
+        pair.title='Tap to select, then tap your defending card';
+        const isSelected = selectedAttackCard?.r===atPair.attack.r && selectedAttackCard?.s===atPair.attack.s;
+        if(isSelected) {
+          pair.style.outline='2px solid var(--gold)';
+          pair.style.borderRadius='8px';
+          pair.style.boxShadow='0 0 12px rgba(201,168,76,0.4)';
+        }
+        pair.onclick=()=>{
+          selectedAttackCard = atPair.attack;
+          selectedCard = null;
+          showToast('Now pick a defending card from your hand');
+          renderGame();
+        };
+      }
+    });
+  }
+}
+
+// ─── TURN ANNOUNCE ────────────────────────────
+let _turnAnnounceTimer = null;
+let _lastAnnouncedAttacker = -1;
+function showTurnAnnounce(state) {
+  if(!state || state.phase === 'done') return;
+  // Don't repeat for the same attacker seat (suppress duplicates)
+  if(state.attackerIdx === _lastAnnouncedAttacker) return;
+  _lastAnnouncedAttacker = state.attackerIdx;
+  const mySub = myUser?.sub;
+  const attacker = state.players[state.attackerIdx];
+  const defender  = state.players[state.defenderIdx];
+  if(!attacker) return;
+
+  const isMyTurn = attacker?.sub === mySub || defender?.sub === mySub;
+  const whoText  = attacker?.sub === mySub ? 'Your Turn' : (attacker?.name || 'Opponent');
+  const roleText = attacker?.sub === mySub
+    ? '⚔️ You attack'
+    : (defender?.sub === mySub ? '🛡 You defend against ' + (attacker?.name||'?') : attacker?.name + ' is attacking');
+
+  const overlay = document.getElementById('turn-announce');
+  const inner   = document.getElementById('turn-announce-inner');
+  const who     = document.getElementById('turn-announce-who');
+  const role    = document.getElementById('turn-announce-role');
+
+  if(!overlay) return;
+  who.textContent  = whoText;
+  role.textContent = roleText;
+  inner.classList.remove('out');
+  overlay.classList.add('show');
+
+  // Flash poker table
+  const pt = document.getElementById('poker-table');
+  if(pt) {
+    pt.classList.remove('turn-flash');
+    void pt.offsetWidth; // reflow
+    pt.classList.add('turn-flash');
+    setTimeout(() => pt.classList.remove('turn-flash'), 1100);
+  }
+
+  clearTimeout(_turnAnnounceTimer);
+  _turnAnnounceTimer = setTimeout(() => {
+    inner.classList.add('out');
+    setTimeout(() => overlay.classList.remove('show'), 480);
+  }, 2400);
+}
+
+// ─── DEAL ANIMATION ───────────────────────────
+function playDealAnimation(state, onDone) {
+  const overlay = document.getElementById('deal-overlay');
+  overlay.innerHTML = '';
+  overlay.classList.add('active');
+
+  // Find the deck position (bottom-right of poker table)
+  const deckEl = document.getElementById('deck-card');
+  const deckR = deckEl ? deckEl.getBoundingClientRect() : { left: window.innerWidth * 0.8, top: window.innerHeight * 0.7, width: 72, height: 100 };
+  const deckX = deckR.left + deckR.width / 2;
+  const deckY = deckR.top + deckR.height / 2;
+
+  // Find my hand zone
+  const handZone = document.getElementById('my-hand-zone');
+  const handR = handZone ? handZone.getBoundingClientRect() : { left: window.innerWidth * 0.2, top: window.innerHeight * 0.8, width: 300, height: 100 };
+  const handX = handR.left + handR.width / 2;
+  const handY = handR.top + handR.height / 2;
+
+  // Find other player seats
+  const seatPositions = {
+    'seat-top':   () => { const e = document.getElementById('seat-top');   if(!e||e.style.display==='none') return null; const r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; },
+    'seat-left':  () => { const e = document.getElementById('seat-left');  if(!e||e.style.display==='none') return null; const r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; },
+    'seat-right': () => { const e = document.getElementById('seat-right'); if(!e||e.style.display==='none') return null; const r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; },
+  };
+
+  const n = state.players.length;
+  const myCards = state.myCards?.length || 6;
+  const totalCards = n * 6; // roughly
+  const cardDelay = 80; // ms between each card flip
+
+  let cardsFired = 0;
+  const targets = [
+    { x: handX, y: handY },
+    ...[seatPositions['seat-top'](), seatPositions['seat-left'](), seatPositions['seat-right']()].filter(Boolean)
+  ];
+
+  // Deal 6 cards to each of n players in round-robin
+  let idx = 0;
+  for(let round = 0; round < 6; round++) {
+    for(let p = 0; p < Math.min(n, targets.length); p++) {
+      const delay = idx * cardDelay;
+      const target = targets[p % targets.length];
+      (function(d, t) {
+        setTimeout(() => {
+          const card = document.createElement('div');
+          card.className = 'deal-card-fly';
+          card.style.left = (deckX - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w') || '72') / 2) + 'px';
+          card.style.top  = (deckY - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h') || '100') / 2) + 'px';
+          card.style.transition = 'none';
+          overlay.appendChild(card);
+
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            const cardW = card.offsetWidth;
+            const cardH = card.offsetHeight;
+            card.style.transition = 'transform 0.32s cubic-bezier(.22,1,.36,1), opacity 0.15s ease 0.22s';
+            const dx = t.x - deckX;
+            const dy = t.y - deckY;
+            const angle = (Math.random() - 0.5) * 20;
+            card.style.transform = `translate(${dx}px, ${dy}px) rotate(${angle}deg) scale(0.85)`;
+            card.style.opacity = '0';
+            setTimeout(() => card.remove(), 450);
+          }));
+        }, d);
+      })(delay, target);
+      idx++;
+    }
+  }
+
+  const totalDuration = idx * cardDelay + 500;
+  setTimeout(() => {
+    overlay.classList.remove('active');
+    overlay.innerHTML = '';
+    onDone && onDone();
+  }, totalDuration);
+}
+
+function animateTakeCards(onDone) {
+  const tableZone = document.getElementById('table-zone');
+  const pairs = tableZone.querySelectorAll('.table-pair');
+  if(!pairs.length) { onDone && onDone(); return; }
+  const takeAnims = ['card-take-l','card-take-c','card-take-r'];
+  pairs.forEach((pair, i) => {
+    const animClass = takeAnims[i % takeAnims.length];
+    pair.querySelectorAll('.card').forEach(c => {
+      c.style.position = 'absolute';
+      c.classList.add(animClass);
+      c.style.animationDelay = (i * 55) + 'ms';
+    });
+  });
+  setTimeout(() => { onDone && onDone(); }, 380 + pairs.length * 55);
+}
+
+function animateClearTable(onDone) {
+  const tableZone = document.getElementById('table-zone');
+  const pairs = tableZone.querySelectorAll('.table-pair');
+  if(!pairs.length) { onDone && onDone(); return; }
+  pairs.forEach((pair, i) => {
+    pair.querySelectorAll('.card').forEach(c => {
+      c.classList.add('card-clear');
+      c.style.animationDelay = (i * 40) + 'ms';
+    });
+  });
+  setTimeout(() => { onDone && onDone(); }, 280 + pairs.length * 40);
+}
+
+function doAttack(card) {
+  if(!card?.r) return;
+  socket.emit('game:attack', { card }, (res) => {
+    if(res?.error) showToast(res.error);
+    selectedCard=null;
+  });
+}
+function doDefend(attackCard, defenseCard) {
+  socket.emit('game:defend', { attackCard, defenseCard }, (res) => {
+    if(res?.error) showToast(res.error);
+    selectedCard=null; selectedAttackCard=null;
+  });
+}
+function doTransfer(card) {
+  socket.emit('game:transfer', { card }, (res) => {
+    if(res?.error) showToast(res.error);
+    selectedCard=null;
+  });
+}
+function doTake() {
+  // Animate cards flying toward hand before server confirms
+  animateTakeCards(() => {
+    socket.emit('game:take', (res) => {
+      if(res?.error) showToast(res.error);
+      selectedCard=null; selectedAttackCard=null;
+    });
+  });
+}
+function doEndAttack() {
+  socket.emit('game:endAttack', (res) => {
+    if(res?.error) showToast(res.error);
+    selectedCard=null;
+  });
+}
+
+// ─── GAME OVER ────────────────────────────────
+function showGameOver(data) {
+  stopTurnTimer();
+
+  const mySub   = myUser.sub;
+  const iWon    = data.winners && data.winners.includes(mySub);
+  const isLoser = data.loserSub === mySub;
+  const loserName = data.rankings?.find(r => r.sub === data.loserSub)?.name
+                  || gameData?.players?.find(p => p.sub === data.loserSub)?.name
+                  || 'Someone';
+
+  document.getElementById('go-emoji').textContent = iWon ? '🏆' : isLoser ? '😞' : '🃏';
+  document.getElementById('go-title').textContent  = iWon ? 'You Won!' : isLoser ? 'Durak!' : 'Game Over';
+  document.getElementById('go-sub').textContent    = isLoser
+    ? `You are the Durak! You lose your bet.`
+    : `${loserName} is the Durak!`;
+
+  const rankingsEl = document.getElementById('go-rankings');
+  rankingsEl.innerHTML = '';
+
+  const rankings = data.rankings;
+  if(rankings && rankings.length > 0) {
+    rankingsEl.style.display = 'flex';
+    const placeEmoji = ['🥇','🥈','🥉','4️⃣'];
+    rankings.forEach((r, i) => {
+      const isMe   = r.sub === mySub;
+      const isLast = i === rankings.length - 1;
+      const isBot  = r.isBot || r.sub?.startsWith('bot:');
+      const row    = document.createElement('div');
+      row.className = 'rank-row' + (i === 0 ? ' rank-1' : '') + (isLast ? ' rank-last' : '');
+
+      // Bots don't have real money — show dash instead of amount
+      let amtStr, amtClass;
+      if(isBot) {
+        amtStr   = '—';
+        amtClass = '';
+      } else {
+        const sign = r.delta >= 0 ? '+' : '-';
+        amtStr     = sign + '$' + Math.abs(r.delta);
+        amtClass   = r.delta >= 0 ? 'plus' : 'minus';
+      }
+
+      row.innerHTML = `
+        <div class="rank-pos">${placeEmoji[i] || '#' + (i + 1)}</div>
+        <div class="rank-name">${esc(r.name)}${isMe ? ' <span style="color:var(--gold);font-size:10px">(you)</span>' : ''}${isBot ? ' <span style="color:var(--muted);font-size:10px">bot</span>' : ''}</div>
+        <div class="rank-amount ${amtClass}">${amtStr}</div>
+      `;
+      rankingsEl.appendChild(row);
+    });
+    document.getElementById('go-pot').textContent = '';
+  } else {
+    rankingsEl.style.display = 'none';
+    const bet = data.bet || 0;
+    if(iWon)         document.getElementById('go-pot').textContent = '+$' + bet;
+    else if(isLoser) document.getElementById('go-pot').textContent = '-$' + bet;
+    else             document.getElementById('go-pot').textContent = '';
+  }
+
+  document.getElementById('gameover-overlay').classList.add('show');
+
+  if(myUser.balance <= 0) {
+    document.getElementById('broke-overlay').classList.add('show');
+  }
+}
+
+function tryLeaveGame() {
+  if(gameData && gameData.phase !== 'done') {
+    openModal('modal-leave-game');
+  } else {
+    backToLobby();
+  }
+}
+
+function confirmLeaveGame() {
+  closeModal('modal-leave-game');
+  stopTurnTimer();
+  // Tell server we forfeit (treated as take/lose)
+  if(socket && gameData) socket.emit('game:forfeit');
+  currentRoom=null; gameData=null;
+  showScreen('lobby');
+  refreshRooms();
+}
+
+function backToLobby() {
+  document.getElementById('gameover-overlay').classList.remove('show');
+  currentRoom=null; gameData=null;
+  showScreen('lobby');
+  refreshRooms();
+}
+
+function playAgain() {
+  document.getElementById('gameover-overlay').classList.remove('show');
+  if(currentRoom) { showScreen('room'); }
+  else { showScreen('lobby'); refreshRooms(); }
+}
+
+async function watchAd() {
+  const res = await apiFetch('/api/me/reset', { method:'POST' });
+  if(res.balance) {
+    myUser.balance = res.balance;
+    updateBalanceDisplays();
+    document.getElementById('broke-overlay').classList.remove('show');
+    showToast('$100 added to your balance!');
+  }
+}
+
+// ─── LEADERBOARD ──────────────────────────────
+async function loadLeaderboard() {
+  const rows = await apiFetch('/api/leaderboard');
+  const medals=['🥇','🥈','🥉'];
+  document.getElementById('lb-body').innerHTML = rows.map((r,i)=>`
+    <tr>
+      <td class="lb-rank ${i<3?['lb-gold','lb-silver','lb-bronze'][i]:''}">${i<3?medals[i]:'#'+(i+1)}</td>
+      <td>${esc(r.name)}</td>
+      <td style="color:var(--gold)">$${r.balance}</td>
+    </tr>
+  `).join('');
+}
+
+// ─── MODALS ───────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+// ─── TOAST ────────────────────────────────────
+let toastTimer=null;
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
+}
+
+// ─── UTILS ────────────────────────────────────
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ─── START ────────────────────────────────────
+init().catch(e => {
+  console.error('Init failed:', e);
+  document.querySelector('#screen-loading .loading-sub').textContent = 'Error: ' + e.message;
+});
+</script>
+</body>
+</html>

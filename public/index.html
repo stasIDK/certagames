@@ -1,672 +1,267 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CERTA — Open World FPS</title>
-  <meta name="description"
-    content="CERTA: A browser-based first-person multiplayer open-world shooter with guns, zombies, and gore." />
-  <style>
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      overflow: hidden;
-      background: #000;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      user-select: none;
-    }
-
-    /* ── Splash ── */
-    #splash {
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(ellipse at 50% 60%, #0a1a2e 0%, #000 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 200;
-      gap: 12px;
-    }
-
-    #splash h1 {
-      font-size: 72px;
-      letter-spacing: 12px;
-      color: #e8c46a;
-      text-shadow: 0 0 40px #e8c46a88, 0 0 80px #e8c46a44;
-      font-weight: 900;
-    }
-
-    #splash p {
-      color: #8899aa;
-      font-size: 16px;
-      letter-spacing: 2px;
-      margin-bottom: 16px;
-    }
-
-    #splash input {
-      padding: 14px 24px;
-      font-size: 18px;
-      border-radius: 10px;
-      border: 2px solid #e8c46a55;
-      background: #ffffff0d;
-      color: #fff;
-      outline: none;
-      text-align: center;
-      width: 300px;
-      transition: border-color 0.2s;
-    }
-
-    #splash input:focus {
-      border-color: #e8c46a;
-    }
-
-    #splash button {
-      padding: 14px 50px;
-      font-size: 17px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      background: linear-gradient(135deg, #e8c46a, #c49a40);
-      color: #111;
-      border: none;
-      border-radius: 10px;
-      cursor: pointer;
-      transition: transform 0.1s, box-shadow 0.2s;
-      box-shadow: 0 4px 24px #e8c46a44;
-    }
-
-    #splash button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 32px #e8c46a66;
-    }
-
-    .splash-divider {
-      width: 200px;
-      height: 1px;
-      background: #e8c46a33;
-      margin: 8px 0;
-    }
-
-    /* ── Canvas ── */
-    #game-canvas {
-      display: block;
-      cursor: crosshair;
-    }
-
-    /* ── Click-to-lock overlay ── */
-    #lock-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 50;
-      background: rgba(0, 0, 0, 0.65);
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-    }
-
-    #lock-overlay h2 {
-      color: #fff;
-      font-size: 28px;
-      letter-spacing: 4px;
-    }
-
-    #lock-overlay p {
-      color: #aaa;
-      font-size: 14px;
-    }
-
-    /* ── HUD ── */
-    #hud {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      display: none;
-    }
-
-    /* Damage flash */
-    #damage-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(255, 0, 0, 0);
-      pointer-events: none;
-      transition: background 0.12s ease-in;
-    }
-
-    #damage-overlay.flash {
-      background: rgba(255, 0, 0, 0.42);
-      transition: none;
-    }
-
-    /* Edge vignette */
-    #vignette {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.52) 100%);
-    }
-
-    /* Crosshair */
-    #crosshair {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      transition: transform 0.12s;
-    }
-
-    #crosshair .ch-line {
-      position: absolute;
-      background: rgba(255, 255, 255, 0.9);
-      box-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
-    }
-
-    /* Default open crosshair */
-    #ch-t {
-      width: 2px;
-      height: 10px;
-      top: -18px;
-      left: -1px;
-    }
-
-    #ch-b {
-      width: 2px;
-      height: 10px;
-      top: 9px;
-      left: -1px;
-    }
-
-    #ch-l {
-      width: 10px;
-      height: 2px;
-      top: -1px;
-      left: -18px;
-    }
-
-    #ch-r {
-      width: 10px;
-      height: 2px;
-      top: -1px;
-      left: 9px;
-    }
-
-    #ch-c {
-      width: 3px;
-      height: 3px;
-      top: -1.5px;
-      left: -1.5px;
-      border-radius: 50%;
-    }
-
-    /* ADS crosshair — tightened via JS class */
-    #crosshair.ads #ch-t {
-      top: -9px;
-    }
-
-    #crosshair.ads #ch-b {
-      top: 6px;
-    }
-
-    #crosshair.ads #ch-l {
-      left: -9px;
-    }
-
-    #crosshair.ads #ch-r {
-      left: 6px;
-    }
-
-    /* Reload ring */
-    #reload-ring {
-      position: absolute;
-      bottom: 200px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: none;
-      align-items: center;
-      gap: 8px;
-      color: #ffdd55;
-      font-size: 13px;
-      font-weight: bold;
-      background: rgba(0, 0, 0, 0.55);
-      padding: 6px 16px;
-      border-radius: 20px;
-      border: 1px solid #ffdd5566;
-    }
-
-    #reload-ring.visible {
-      display: flex;
-    }
-
-    /* Top-right info */
-    #top-right {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      align-items: flex-end;
-    }
-
-    #player-count {
-      color: #fff;
-      background: rgba(0, 0, 0, 0.55);
-      backdrop-filter: blur(6px);
-      padding: 8px 16px;
-      border-radius: 10px;
-      font-size: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    #coords {
-      color: rgba(255, 255, 255, 0.6);
-      font-size: 11px;
-      font-family: monospace;
-      background: rgba(0, 0, 0, 0.4);
-      padding: 4px 10px;
-      border-radius: 6px;
-    }
-
-    /* HP Bar */
-    #hp-wrap {
-      position: absolute;
-      bottom: 190px;
-      left: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    #hp-label {
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 11px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-
-    #hp-bar-bg {
-      width: 220px;
-      height: 16px;
-      background: rgba(0, 0, 0, 0.55);
-      border-radius: 8px;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-    }
-
-    #hp-bar {
-      height: 100%;
-      width: 100%;
-      background: #44ff44;
-      border-radius: 8px;
-      transition: width 0.2s, background 0.3s;
-    }
-
-    #hp-text {
-      color: #fff;
-      font-size: 13px;
-      font-weight: bold;
-    }
-
-    /* Ammo / gun display */
-    #ammo-display {
-      position: absolute;
-      bottom: 160px;
-      right: 16px;
-      color: #fff;
-      font-size: 18px;
-      font-weight: bold;
-      background: rgba(0, 0, 0, 0.55);
-      backdrop-filter: blur(6px);
-      padding: 10px 18px;
-      border-radius: 10px;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      font-family: monospace;
-      letter-spacing: 2px;
-    }
-
-    #gun-name {
-      position: absolute;
-      bottom: 204px;
-      right: 16px;
-      color: #ffcc88;
-      font-size: 11px;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      background: rgba(0, 0, 0, 0.4);
-      padding: 3px 10px;
-      border-radius: 6px;
-    }
-
-    /* Pickup prompt */
-    #pickup-prompt {
-      position: absolute;
-      top: 55%;
-      left: 50%;
-      transform: translateX(-50%);
-      color: #ffdd55;
-      font-size: 15px;
-      font-weight: bold;
-      background: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(4px);
-      padding: 8px 20px;
-      border-radius: 20px;
-      border: 1px solid #ffdd5566;
-      display: none;
-      animation: pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-
-      0%,
-      100% {
-        opacity: 1;
-      }
-
-      50% {
-        opacity: 0.6;
-      }
-    }
-
-    /* Chat */
-    #chat-wrap {
-      position: absolute;
-      bottom: 80px;
-      left: 16px;
-      width: 360px;
-      pointer-events: none;
-    }
-
-    #chat-messages {
-      max-height: 160px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      margin-bottom: 6px;
-    }
-
-    #chat-messages .msg {
-      color: #fff;
-      font-size: 13px;
-      background: rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(4px);
-      padding: 4px 10px;
-      border-radius: 6px;
-      border-left: 3px solid #e8c46a66;
-      animation: fadein 0.2s ease;
-    }
-
-    #chat-messages .msg.system {
-      border-left-color: #44ccff88;
-      color: #aaddff;
-      font-style: italic;
-    }
-
-    #chat-messages .msg.combat {
-      border-left-color: #ff444488;
-      color: #ffaaaa;
-    }
-
-    @keyframes fadein {
-      from {
-        opacity: 0;
-        transform: translateX(-4px);
-      }
-
-      to {
-        opacity: 1;
-      }
-    }
-
-    #chat-input-wrap {
-      display: flex;
-      pointer-events: all;
-      gap: 6px;
-    }
-
-    #chat-input {
-      flex: 1;
-      padding: 8px 12px;
-      background: rgba(0, 0, 0, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      color: #fff;
-      font-size: 13px;
-      outline: none;
-      display: none;
-    }
-
-    #chat-input.open {
-      display: block;
-    }
-
-    #chat-input::placeholder {
-      color: rgba(255, 255, 255, 0.4);
-    }
-
-    /* Controls hint */
-    #hint {
-      position: absolute;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255, 255, 255, 0.55);
-      font-size: 11px;
-      background: rgba(0, 0, 0, 0.45);
-      backdrop-filter: blur(6px);
-      padding: 6px 16px;
-      border-radius: 20px;
-      white-space: nowrap;
-      letter-spacing: 1px;
-    }
-
-    /* Minimap */
-    #minimap {
-      position: absolute;
-      bottom: 16px;
-      right: 16px;
-      width: 150px;
-      height: 150px;
-    }
-
-    #minimap canvas {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      border: 2px solid rgba(255, 255, 255, 0.18);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    }
-
-    #minimap-label {
-      text-align: center;
-      color: rgba(255, 255, 255, 0.45);
-      font-size: 10px;
-      letter-spacing: 2px;
-      margin-top: 4px;
-    }
-
-    /* ── Death Screen ── */
-    #death-screen {
-      position: fixed;
-      inset: 0;
-      z-index: 100;
-      background: rgba(0, 0, 0, 0.82);
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-    }
-
-    #death-screen h2 {
-      font-size: 64px;
-      color: #ff2222;
-      letter-spacing: 8px;
-      font-weight: 900;
-      text-shadow: 0 0 40px #ff222266;
-      animation: deathPulse 1.5s infinite;
-    }
-
-    #death-screen p {
-      color: #aaa;
-      font-size: 18px;
-    }
-
-    @keyframes deathPulse {
-
-      0%,
-      100% {
-        text-shadow: 0 0 40px #ff222266;
-      }
-
-      50% {
-        text-shadow: 0 0 80px #ff2222cc;
-      }
-    }
-
-    #respawn-btn {
-      padding: 16px 60px;
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      background: linear-gradient(135deg, #e8c46a, #c49a40);
-      color: #111;
-      border: none;
-      border-radius: 12px;
-      cursor: pointer;
-      pointer-events: all;
-      transition: transform 0.15s;
-      box-shadow: 0 4px 24px #e8c46a44;
-    }
-
-    #respawn-btn:hover {
-      transform: scale(1.05);
-    }
-
-    /* Hit marker */
-    #hit-marker {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 20px;
-      height: 20px;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    #hit-marker.show {
-      opacity: 1;
-      transition: none;
-    }
-
-    #hit-marker::before,
-    #hit-marker::after {
-      content: '';
-      position: absolute;
-      background: #ff2222;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-    }
-
-    #hit-marker::before {
-      width: 2px;
-      height: 100%;
-    }
-
-    #hit-marker::after {
-      width: 100%;
-      height: 2px;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CertaGames</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0a0d12; --gold: #d4a853; --gold2: #e8c27a;
+  --gold3: rgba(212,168,83,0.12); --border: rgba(212,168,83,0.15);
+  --text: rgba(255,255,255,0.85); --muted: rgba(255,255,255,0.28);
+}
+html, body { min-height: 100vh; background: var(--bg); font-family: 'DM Mono', monospace; color: var(--text); overflow-x: hidden; }
+body::before { content:''; position:fixed; inset:0; background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212,168,83,0.07) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 80% 80%, rgba(26,58,122,0.12) 0%, transparent 60%); pointer-events:none; z-index:0; }
+body::after { content:''; position:fixed; inset:0; background-image: linear-gradient(rgba(212,168,83,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(212,168,83,0.03) 1px, transparent 1px); background-size:60px 60px; pointer-events:none; z-index:0; }
+
+#loading-screen { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:9999; background:var(--bg); }
+.loading-dots { display:flex; gap:8px; }
+.loading-dots span { width:8px; height:8px; border-radius:50%; background:var(--gold); opacity:0.3; animation:dot 1.2s infinite; }
+.loading-dots span:nth-child(2){animation-delay:0.2s;} .loading-dots span:nth-child(3){animation-delay:0.4s;}
+@keyframes dot { 0%,80%,100%{opacity:0.3;transform:scale(1);} 40%{opacity:1;transform:scale(1.3);} }
+
+#login-screen { display:none; position:fixed; inset:0; align-items:center; justify-content:center; z-index:100; padding:24px; }
+#login-screen.show { display:flex; }
+.login-card { background:linear-gradient(160deg,#111820,#0c1410); border:1px solid rgba(212,168,83,0.25); border-radius:20px; padding:52px 48px; text-align:center; box-shadow:0 40px 80px rgba(0,0,0,0.8); animation:popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards; width:380px; max-width:100%; }
+@keyframes popIn { from{transform:scale(0.85) translateY(20px);opacity:0;} to{transform:scale(1) translateY(0);opacity:1;} }
+.login-logo { font-family:'DM Serif Display',serif; font-style:italic; font-size:36px; color:var(--gold2); margin-bottom:6px; text-shadow:0 0 40px rgba(212,168,83,0.3); }
+.login-tagline { font-size:11px; letter-spacing:0.15em; text-transform:uppercase; color:rgba(212,168,83,0.35); margin-bottom:40px; }
+.login-btn { width:100%; padding:14px; border-radius:10px; border:1px solid rgba(212,168,83,0.3); background:rgba(212,168,83,0.08); color:var(--gold2); font-family:'DM Mono',monospace; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:12px; }
+.login-btn:hover { background:rgba(212,168,83,0.16); border-color:var(--gold); transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+.login-btn:active { transform:translateY(0); }
+.login-tabs { display:flex; margin-bottom:28px; border-bottom:1px solid rgba(212,168,83,0.15); }
+.login-tab { flex:1; padding:10px; font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; background:none; border:none; color:rgba(255,255,255,0.3); cursor:pointer; border-bottom:2px solid transparent; transition:all 0.2s; margin-bottom:-1px; }
+.login-tab.active { color:var(--gold2); border-bottom-color:var(--gold); }
+.login-input-row { margin-bottom:14px; text-align:left; }
+.login-input-label { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(212,168,83,0.4); margin-bottom:5px; display:block; }
+.login-input { width:100%; padding:11px 14px; background:rgba(255,255,255,0.04); border:1px solid rgba(212,168,83,0.18); border-radius:8px; color:rgba(255,255,255,0.85); font-family:'DM Mono',monospace; font-size:13px; outline:none; transition:border-color 0.2s; }
+.login-input:focus { border-color:rgba(212,168,83,0.5); }
+.login-input::placeholder { color:rgba(255,255,255,0.2); }
+.login-error { font-size:12px; color:#e74c3c; margin-top:10px; min-height:18px; text-align:left; }
+.login-privacy { margin-top:20px; font-size:10px; color:rgba(255,255,255,0.18); letter-spacing:0.05em; line-height:1.6; }
+
+#main-page { display:none; position:relative; z-index:1; }
+#main-page.show { display:block; }
+.page { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:80px 32px 80px; }
+
+.user-bar { position:fixed; top:0; left:0; right:0; display:flex; align-items:center; justify-content:flex-end; padding:12px 24px; gap:12px; border-bottom:1px solid rgba(212,168,83,0.08); background:rgba(10,13,18,0.85); backdrop-filter:blur(8px); z-index:50; }
+.user-name { font-size:12px; color:rgba(212,168,83,0.7); letter-spacing:0.04em; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.logout-btn { background:none; border:1px solid rgba(212,168,83,0.2); color:rgba(212,168,83,0.4); font-family:'DM Mono',monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; padding:5px 10px; border-radius:4px; cursor:pointer; transition:all 0.15s; }
+.logout-btn:hover { border-color:var(--gold); color:var(--gold2); }
+
+.hero { text-align:center; margin-bottom:72px; animation:fadeDown 0.8s cubic-bezier(0.22,1,0.36,1) forwards; opacity:0; }
+@keyframes fadeDown { from{transform:translateY(-20px);opacity:0;} to{transform:translateY(0);opacity:1;} }
+.hero-eyebrow { font-size:clamp(11px,1.5vw,13px); letter-spacing:0.35em; text-transform:uppercase; color:var(--gold); opacity:0.6; margin-bottom:18px; }
+.hero-title { font-family:'DM Serif Display',serif; font-style:italic; font-size:clamp(52px,10vw,88px); color:var(--gold2); line-height:1; margin-bottom:14px; text-shadow:0 0 60px rgba(212,168,83,0.25); }
+.hero-sub { font-size:clamp(12px,1.8vw,15px); letter-spacing:0.15em; color:var(--muted); text-transform:uppercase; }
+
+.divider { display:flex; align-items:center; gap:16px; width:100%; max-width:760px; margin-bottom:48px; animation:fadeIn 1s 0.3s forwards; opacity:0; }
+.divider-line { flex:1; height:1px; background:var(--border); }
+.divider-icon { color:var(--gold); opacity:0.4; font-size:16px; }
+
+.games-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:24px; width:100%; max-width:1320px; }
+
+.game-card { position:relative; background:linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01)); border:1px solid var(--border); border-radius:20px; padding:40px 36px 80px; cursor:pointer; overflow:hidden; transition:transform 0.25s cubic-bezier(0.22,1,0.36,1),border-color 0.25s,box-shadow 0.25s; animation:fadeUp 0.6s cubic-bezier(0.22,1,0.36,1) forwards; opacity:0; text-decoration:none; display:block; -webkit-tap-highlight-color:transparent; }
+.game-card:nth-child(1){animation-delay:0.10s;} .game-card:nth-child(2){animation-delay:0.20s;} .game-card:nth-child(3){animation-delay:0.30s;} .game-card:nth-child(4){animation-delay:0.40s;}
+@keyframes fadeUp { from{transform:translateY(24px);opacity:0;} to{transform:translateY(0);opacity:1;} }
+.game-card::before { content:''; position:absolute; inset:0; background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(212,168,83,0.07),transparent); opacity:0; transition:opacity 0.3s; border-radius:inherit; }
+.game-card:hover { transform:translateY(-6px); border-color:rgba(212,168,83,0.4); box-shadow:0 20px 50px rgba(0,0,0,0.5); }
+.game-card:hover::before { opacity:1; }
+.game-card:active { transform:translateY(-2px); }
+.game-card::after { content:''; position:absolute; top:0; right:0; width:80px; height:80px; background:linear-gradient(225deg,rgba(212,168,83,0.08) 0%,transparent 60%); border-radius:0 20px 0 0; }
+.game-icon { font-size:clamp(52px,8vw,64px); margin-bottom:24px; display:block; transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1); }
+.game-card:hover .game-icon { transform:scale(1.12) rotate(-3deg); }
+.game-name { font-family:'DM Serif Display',serif; font-style:italic; font-size:clamp(26px,4vw,32px); color:var(--gold2); margin-bottom:10px; }
+.game-desc { font-size:clamp(12px,1.6vw,14px); color:var(--muted); letter-spacing:0.05em; line-height:1.8; margin-bottom:24px; }
+.game-tag { display:inline-flex; align-items:center; gap:6px; background:var(--gold3); border:1px solid rgba(212,168,83,0.2); border-radius:20px; padding:6px 16px; font-size:clamp(10px,1.4vw,12px); color:var(--gold); letter-spacing:0.1em; text-transform:uppercase; }
+.game-play-btn { position:absolute; bottom:36px; right:36px; width:52px; height:52px; border-radius:50%; background:rgba(212,168,83,0.1); border:1px solid rgba(212,168,83,0.25); display:flex; align-items:center; justify-content:center; color:var(--gold); font-size:18px; transition:background 0.2s,transform 0.2s; }
+.game-card:hover .game-play-btn { background:rgba(212,168,83,0.2); transform:scale(1.1); }
+
+/* Shooter card — red accent */
+.game-card.shooter { border-color:rgba(200,50,50,0.25); }
+.game-card.shooter::before { background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(200,50,50,0.10),transparent); }
+.game-card.shooter:hover { border-color:rgba(220,70,70,0.5); box-shadow:0 20px 50px rgba(160,20,20,0.3); }
+.game-card.shooter .game-name { color:#ff9988; }
+.game-card.shooter .game-tag { background:rgba(200,50,50,0.12); border-color:rgba(220,70,70,0.2); color:#ff9988; }
+.game-card.shooter .game-play-btn { background:rgba(200,50,50,0.12); border-color:rgba(220,70,70,0.3); color:#ff9988; }
+.game-card.shooter:hover .game-play-btn { background:rgba(200,50,50,0.22); }
+
+footer { position:relative; z-index:1; text-align:center; padding:0 24px 40px; font-size:11px; color:rgba(255,255,255,0.1); letter-spacing:0.1em; text-transform:uppercase; }
+@keyframes fadeIn { from{opacity:0;} to{opacity:1;} }
+@media(max-width:600px) {
+  .page{padding:70px 20px 60px;} .hero{margin-bottom:48px;}
+  .games-grid{grid-template-columns:1fr;}
+  .game-card{padding:32px 28px 72px; border-radius:16px;}
+  .game-play-btn{bottom:28px;right:28px;width:46px;height:46px;}
+}
+</style>
 </head>
-
 <body>
 
-  <div id="splash">
-    <h1>⚔ CERTA</h1>
-    <p>OPEN WORLD BROWSER FPS</p>
-    <div class="splash-divider"></div>
-    <input id="name-input" type="text" placeholder="Enter your name" maxlength="20" autocomplete="off" />
-    <button id="enter-btn">ENTER WORLD</button>
-  </div>
+<div id="loading-screen">
+  <div class="loading-dots"><span></span><span></span><span></span></div>
+</div>
 
-  <canvas id="game-canvas"></canvas>
-
-  <!-- Lock overlay — shown when pointer lock is released -->
-  <div id="lock-overlay">
-    <h2>CLICK TO PLAY</h2>
-    <p>Click the game window to lock your mouse · Esc to release</p>
-  </div>
-
-  <div id="hud">
-    <div id="vignette"></div>
-    <div id="damage-overlay"></div>
-    <div id="hit-marker"></div>
-
-    <div id="crosshair">
-      <div class="ch-line" id="ch-t"></div>
-      <div class="ch-line" id="ch-b"></div>
-      <div class="ch-line" id="ch-l"></div>
-      <div class="ch-line" id="ch-r"></div>
-      <div class="ch-line" id="ch-c"></div>
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">♠ CertaGames</div>
+    <div class="login-tagline">Sign in to play &amp; compete</div>
+    <div class="login-tabs">
+      <button class="login-tab active" id="tab-login" onclick="switchAuthTab('login')">Sign In</button>
+      <button class="login-tab" id="tab-register" onclick="switchAuthTab('register')">Create Account</button>
     </div>
-
-    <div id="reload-ring">↺ RELOADING…</div>
-
-    <div id="top-right">
-      <div id="player-count">👥 1 player</div>
-      <div id="coords">X: 0 Z: 0</div>
-    </div>
-
-    <div id="hp-wrap">
-      <div id="hp-label">❤ Health</div>
-      <div id="hp-bar-bg">
-        <div id="hp-bar"></div>
+    <div id="auth-form-login">
+      <div class="login-input-row">
+        <label class="login-input-label">Username</label>
+        <input class="login-input" id="login-username" type="text" placeholder="your username" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
-      <div id="hp-text">100 / 100</div>
-    </div>
-
-    <div id="gun-name"></div>
-    <div id="ammo-display">[ no gun ]</div>
-
-    <div id="pickup-prompt">🔫 Press E to pick up</div>
-
-    <div id="chat-wrap">
-      <div id="chat-messages"></div>
-      <div id="chat-input-wrap">
-        <input id="chat-input" type="text" placeholder="Press T to chat…" maxlength="120" autocomplete="off" />
+      <div class="login-input-row">
+        <label class="login-input-label">Password</label>
+        <input class="login-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
+      <div class="login-error" id="login-error"></div>
+      <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    </div>
+    <div id="auth-form-register" style="display:none">
+      <div class="login-input-row">
+        <label class="login-input-label">Choose a username</label>
+        <input class="login-input" id="reg-username" type="text" placeholder="e.g. stas99" maxlength="30" onkeydown="if(event.key==='Enter')doRegister()">
+      </div>
+      <div class="login-input-row">
+        <label class="login-input-label">Password</label>
+        <input class="login-input" id="reg-password" type="password" placeholder="At least 4 characters" autocomplete="new-password" onkeydown="if(event.key==='Enter')doRegister()">
+      </div>
+      <div class="login-error" id="reg-error"></div>
+      <button class="login-btn" id="reg-btn" onclick="doRegister()">Create Account</button>
+    </div>
+    <div class="login-privacy">By signing in you agree to play fair.<br>Scores are tied to your account.</div>
+  </div>
+</div>
+
+<div id="main-page">
+  <div class="user-bar">
+    <span class="user-name" id="user-name"></span>
+    <button class="logout-btn" onclick="doLogout()">Sign out</button>
+  </div>
+
+  <div class="page">
+    <div class="hero">
+      <div class="hero-eyebrow">Welcome</div>
+      <div class="hero-title">CertaGames</div>
+      <div class="hero-sub">Choose your game</div>
     </div>
 
-    <div id="hint">WASD · Move &nbsp;|&nbsp; Space · Jump &nbsp;|&nbsp; LMB · Shoot &nbsp;|&nbsp; RMB · Aim
-      &nbsp;|&nbsp; R · Reload &nbsp;|&nbsp; F · Punch &nbsp;|&nbsp; E · Pick up &nbsp;|&nbsp; T · Chat</div>
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-icon">♦</div>
+      <div class="divider-line"></div>
+    </div>
 
-    <div id="minimap">
-      <canvas id="minimap-canvas" width="150" height="150"></canvas>
-      <div id="minimap-label">MAP</div>
+    <div class="games-grid">
+
+      <a class="game-card shooter" href="/game">
+        <span class="game-icon">⚔️</span>
+        <div class="game-name">Certa: Open World</div>
+        <div class="game-desc">Browser FPS — zombies, guns &amp; real players.<br>One shared open world. No download needed.</div>
+        <div class="game-tag">💀 Most Kills</div>
+        <div class="game-play-btn">▶</div>
+      </a>
+
+      <a class="game-card" href="/solitaire">
+        <span class="game-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 68" width="72" height="68" style="display:block">
+          <g transform="rotate(-18 36 34)"><rect x="2" y="10" width="34" height="46" rx="4" fill="#fdf6e3" stroke="rgba(0,0,0,0.12)" stroke-width="1"/><text x="7" y="24" font-family="Georgia,serif" font-size="13" font-weight="bold" fill="#1a1a1a">A</text><text x="8" y="34" font-family="Georgia,serif" font-size="11" fill="#1a1a1a">♠</text></g>
+          <g transform="rotate(18 36 34)"><rect x="36" y="10" width="34" height="46" rx="4" fill="#fdf6e3" stroke="rgba(0,0,0,0.12)" stroke-width="1"/><text x="41" y="24" font-family="Georgia,serif" font-size="13" font-weight="bold" fill="#c0392b">A</text><text x="42" y="34" font-family="Georgia,serif" font-size="11" fill="#c0392b">♦</text></g>
+          <g transform="rotate(-7 36 34)"><rect x="6" y="8" width="34" height="46" rx="4" fill="#fdf6e3" stroke="rgba(0,0,0,0.12)" stroke-width="1"/><text x="11" y="22" font-family="Georgia,serif" font-size="13" font-weight="bold" fill="#c0392b">A</text><text x="12" y="32" font-family="Georgia,serif" font-size="11" fill="#c0392b">♥</text></g>
+          <g transform="rotate(7 36 34)"><rect x="32" y="8" width="34" height="46" rx="4" fill="#fdf6e3" stroke="rgba(0,0,0,0.12)" stroke-width="1"/><text x="37" y="22" font-family="Georgia,serif" font-size="13" font-weight="bold" fill="#1a1a1a">A</text><text x="38" y="32" font-family="Georgia,serif" font-size="11" fill="#1a1a1a">♣</text></g>
+        </svg></span>
+        <div class="game-name">Solitaire</div>
+        <div class="game-desc">Classic Klondike solitaire.<br>Beat the clock, top the leaderboard.</div>
+        <div class="game-tag">🏆 Fastest Time</div>
+        <div class="game-play-btn">▶</div>
+      </a>
+
+      <a class="game-card" href="/durak">
+        <span class="game-icon">🃏</span>
+        <div class="game-name">Durak</div>
+        <div class="game-desc">The Russian card game.<br>Multiplayer rooms, bots, real money stakes.</div>
+        <div class="game-tag">💰 Most Earned</div>
+        <div class="game-play-btn">▶</div>
+      </a>
+
+      <a class="game-card" href="/poker">
+        <span class="game-icon">♠️</span>
+        <div class="game-name">Poker</div>
+        <div class="game-desc">Texas Hold'em at its finest.<br>Bluff, bet, and outlast the table.</div>
+        <div class="game-tag">🃏 Biggest Balls</div>
+        <div class="game-play-btn">▶</div>
+      </a>
+
     </div>
   </div>
 
-  <div id="death-screen">
-    <h2>YOU DIED</h2>
-    <p id="death-msg">You were eliminated.</p>
-    <button id="respawn-btn">RESPAWN</button>
-  </div>
+  <footer>CertaGames &nbsp;·&nbsp; ♠ ♥ ♦ ♣ ⚔</footer>
+</div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="/game.js"></script>
+<script>
+function getToken()  { return sessionStorage.getItem('auth_token'); }
+function setToken(t) { sessionStorage.setItem('auth_token', t); }
+function clearToken(){ sessionStorage.removeItem('auth_token'); sessionStorage.removeItem('user_name'); }
+function switchAuthTab(tab) {
+  document.getElementById('auth-form-login').style.display    = tab==='login'    ? '' : 'none';
+  document.getElementById('auth-form-register').style.display = tab==='register' ? '' : 'none';
+  document.getElementById('tab-login').classList.toggle('active',    tab==='login');
+  document.getElementById('tab-register').classList.toggle('active', tab==='register');
+}
+async function doLogin() {
+  const username=document.getElementById('login-username').value.trim();
+  const password=document.getElementById('login-password').value;
+  const errEl=document.getElementById('login-error');
+  const btn=document.getElementById('login-btn');
+  errEl.textContent='';
+  if(!username||!password){errEl.textContent='Enter username and password';return;}
+  btn.disabled=true; btn.textContent='Signing in…';
+  try {
+    const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+    const data=await res.json();
+    if(!res.ok){errEl.textContent=data.error||'Login failed';btn.disabled=false;btn.textContent='Sign In';return;}
+    setToken(data.token); sessionStorage.setItem('user_name',data.user.name); showMain(data.user);
+  } catch(e){errEl.textContent='Network error — is the server running?';btn.disabled=false;btn.textContent='Sign In';}
+}
+async function doRegister() {
+  const username=document.getElementById('reg-username').value.trim();
+  const password=document.getElementById('reg-password').value;
+  const errEl=document.getElementById('reg-error');
+  const btn=document.getElementById('reg-btn');
+  errEl.textContent='';
+  if(!username){errEl.textContent='Choose a username';return;}
+  if(!password||password.length<4){errEl.textContent='Password must be at least 4 characters';return;}
+  btn.disabled=true; btn.textContent='Creating…';
+  try {
+    const res=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+    const data=await res.json();
+    if(!res.ok){errEl.textContent=data.error||'Registration failed';btn.disabled=false;btn.textContent='Create Account';return;}
+    setToken(data.token); sessionStorage.setItem('user_name',data.user.name); showMain(data.user);
+  } catch(e){errEl.textContent='Network error — is the server running?';btn.disabled=false;btn.textContent='Create Account';}
+}
+function showMain(user) {
+  document.getElementById('user-name').textContent=user?.name||sessionStorage.getItem('user_name')||'';
+  document.getElementById('login-screen').classList.remove('show');
+  document.getElementById('main-page').classList.add('show');
+}
+function doLogout(){clearToken();window.location.reload();}
+(function init(){
+  document.getElementById('loading-screen').style.display='none';
+  const token=getToken();
+  if(token){
+    try{
+      const payload=JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+      if(payload.exp&&payload.exp<Math.floor(Date.now()/1000)){clearToken();document.getElementById('login-screen').classList.add('show');return;}
+      showMain({name:payload.name});
+    }catch(e){clearToken();document.getElementById('login-screen').classList.add('show');}
+  } else {document.getElementById('login-screen').classList.add('show');}
+})();
+</script>
 </body>
-
 </html>
