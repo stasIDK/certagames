@@ -260,15 +260,22 @@ class CertaGame {
     this.traces = null;
 
     // Viewmodel meshes
-    this.vmRoot = null; // parent for arms and gun in vm scene
+    this.vmRoot = null;
     this.vmGunMesh = null;
     this.vmArmL = null;
     this.vmArmR = null;
+    this.vmFistL = null;   // shown when no gun
+    this.vmFistR = null;
     // Animation state
     this.vmRecoil = 0;
-    this.vmPunchAnim = 0; // 0..1 punch swing
-    this.vmReloadAnim = 0; // 0..1 reload drop/raise
+    this.vmPunchAnim = 0;
+    this.vmReloadAnim = 0;
     this.vmIdleBob = 0;
+    this.vmPullout = 1;        // 1 = ready position; animated 0→1 on equip
+    this.vmPullingOut = false; // true while pull-out anim plays
+
+    // Building floor heights — set during _buildBuildings, used in ground snap
+    this.buildingFloors = [];
 
     this.ws = null;
     this._init();
@@ -338,92 +345,119 @@ class CertaGame {
     this.vmCamera.position.set(0, 0, 0);
 
     this.vmScene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const vmSun = new THREE.DirectionalLight(0xfff4cc, 0.6);
-    vmSun.position.set(1, 2, 1);
+    const vmSun = new THREE.DirectionalLight(0xfff4cc, 0.7);
+    vmSun.position.set(0.5, 1.5, 0.8);
     this.vmScene.add(vmSun);
 
     this.vmRoot = new THREE.Group();
-    // Initial position matches hip rest position (updated from -0.72 to -0.26 to stay in frustum)
     this.vmRoot.position.set(0.18, -0.26, -0.55);
     this.vmScene.add(this.vmRoot);
 
-    // Arms and gun — built once, visibility controlled per-state
     this._buildViewmodelArms();
-    // No gun built until first pickup — avoids showing phantom pistol at spawn
-    // Arms also hidden until pickup (no gun = fists only, handled via _buildViewmodelGun)
-    if (this.vmArmL) this.vmArmL.visible = false;
-    if (this.vmArmR) this.vmArmR.visible = false;
+    // Start with fists visible, no gun
+    this._showFists();
   }
 
+  // ── Arms: sleeves (bottom, off-screen) → forearm → hand/fist at top (visible) ──
   _buildViewmodelArms() {
     if (this.vmArmL) this.vmRoot.remove(this.vmArmL);
     if (this.vmArmR) this.vmRoot.remove(this.vmArmR);
+    if (this.vmFistL) this.vmRoot.remove(this.vmFistL);
+    if (this.vmFistR) this.vmRoot.remove(this.vmFistR);
 
-    const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x111111 }); // black
-    const stripeMat = new THREE.MeshLambertMaterial({ color: 0xffffff }); // white stripes
-    const skinMat   = new THREE.MeshLambertMaterial({ color: 0xc68642 }); // skin tone
+    const sleeveMat  = new THREE.MeshLambertMaterial({ color: 0x111111 });
+    const stripeMat  = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const skinMat    = new THREE.MeshLambertMaterial({ color: 0xc68642 });
+    const knuckleMat = new THREE.MeshLambertMaterial({ color: 0xb07840 });
 
+    // makeArm: group origin = wrist level (visible).
+    // Hand at +Y (slightly visible), forearm toward 0, sleeve at -Y (disappears off-screen).
     const makeArm = (isLeft) => {
       const g = new THREE.Group();
 
-      // ── CORRECTED ORIENTATION: hand at TOP (visible), sleeve at BOTTOM (off-screen) ──
-      // In vmCamera space +Y is up, -Y is down. Arms extend downward off screen.
-      // The hand/wrist should be visible near the gun grip (high Y in arm-group space).
-      // The sleeve extends downward and disappears below the frustum.
-
-      // Hand — top of arm group, grips gun
-      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.10, 0.08), skinMat);
-      hand.position.y = 0.22;
+      // Hand / fist — topmost, clearly visible
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.09, 0.09), skinMat);
+      hand.position.y = 0.06;
       g.add(hand);
+      // Knuckle row
+      const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 0.06), knuckleMat);
+      knuckles.position.set(0, 0.10, 0.03);
+      g.add(knuckles);
 
-      // Forearm (skin) — just below hand
-      const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.24, 0.09), skinMat);
-      forearm.position.y = 0.03;
+      // Forearm (skin) — middle section
+      const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.22, 0.09), skinMat);
+      forearm.position.y = -0.11;
       g.add(forearm);
 
-      // Upper arm sleeve (black Adidas) — extends downward, partially off screen
-      const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.30, 0.10), sleeveMat);
-      sleeve.position.y = -0.20;
+      // Sleeve — black, extends below, mostly off-screen
+      const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.28, 0.105), sleeveMat);
+      sleeve.position.y = -0.33;
       g.add(sleeve);
 
-      // 3 white Adidas stripes on sleeve (placed at sleeve Y)
-      [-0.04, 0, 0.04].forEach(ox => {
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.28, 0.003), stripeMat);
-        stripe.position.set(ox, -0.20, isLeft ? -0.052 : 0.052);
+      // 3 Adidas stripes on sleeve
+      [-0.038, 0, 0.038].forEach(ox => {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.26, 0.003), stripeMat);
+        stripe.position.set(ox, -0.33, isLeft ? -0.054 : 0.054);
         g.add(stripe);
       });
 
       return g;
     };
 
-    // Right arm — trigger hand, right side
+    // Gun-holding arms (used when armed)
     this.vmArmR = makeArm(false);
-    this.vmArmR.position.set(0.16, -0.08, 0.0);
-    this.vmArmR.rotation.x = 0.08;
+    this.vmArmR.position.set(0.17, -0.06, 0.0);
+    this.vmArmR.rotation.x = 0.10;
     this.vmRoot.add(this.vmArmR);
 
-    // Left arm — support hand, left side, slightly further forward (holding barrel area)
     this.vmArmL = makeArm(true);
-    this.vmArmL.position.set(-0.16, -0.10, -0.14);
-    this.vmArmL.rotation.x = 0.10;
+    this.vmArmL.position.set(-0.15, -0.08, -0.15);
+    this.vmArmL.rotation.x = 0.12;
     this.vmRoot.add(this.vmArmL);
+
+    // Fist arms — wider stance for unarmed
+    this.vmFistR = makeArm(false);
+    this.vmFistR.position.set(0.20, -0.06, 0.0);
+    this.vmFistR.rotation.x = 0.08;
+    this.vmRoot.add(this.vmFistR);
+
+    this.vmFistL = makeArm(true);
+    this.vmFistL.position.set(-0.20, -0.08, -0.08);
+    this.vmFistL.rotation.x = 0.08;
+    this.vmRoot.add(this.vmFistL);
+
+    // Start hidden; _showFists() / _showGun() control visibility
+    [this.vmArmL, this.vmArmR, this.vmFistL, this.vmFistR].forEach(a => { if (a) a.visible = false; });
+  }
+
+  // Show unarmed fist viewmodel
+  _showFists() {
+    if (this.vmArmL)  this.vmArmL.visible  = false;
+    if (this.vmArmR)  this.vmArmR.visible  = false;
+    if (this.vmFistL) this.vmFistL.visible = true;
+    if (this.vmFistR) this.vmFistR.visible = true;
+    if (this.vmGunMesh) this.vmGunMesh.visible = false;
+  }
+
+  // Show armed viewmodel with pull-out animation
+  _showGun() {
+    if (this.vmArmL)  this.vmArmL.visible  = true;
+    if (this.vmArmR)  this.vmArmR.visible  = true;
+    if (this.vmFistL) this.vmFistL.visible = false;
+    if (this.vmFistR) this.vmFistR.visible = false;
+    if (this.vmGunMesh) this.vmGunMesh.visible = true;
+    // Trigger pull-out animation
+    this.vmPullout = 0;
+    this.vmPullingOut = true;
   }
 
   _buildViewmodelGun(type) {
-    // Remove old gun mesh
     if (this.vmGunMesh) this.vmRoot.remove(this.vmGunMesh);
-
     this.vmGunMesh = this._makeGunModel(type, true);
-    // rotation.y = PI/2: gun's local +X (barrel direction) maps to -Z (into screen) ✓
     this.vmGunMesh.rotation.y = Math.PI / 2;
-    // Position so grip aligns with right hand
     this.vmGunMesh.position.set(-0.02, 0.06, 0.0);
-    this.vmGunMesh.visible = true;
+    this.vmGunMesh.visible = false; // hidden until _showGun() called
     this.vmRoot.add(this.vmGunMesh);
-
-    // Show arms now that a gun is held
-    if (this.vmArmL) this.vmArmL.visible = true;
-    if (this.vmArmR) this.vmArmR.visible = true;
   }
 
   // ── Gun 3D model builder ─────────────────────────────────────
@@ -447,26 +481,26 @@ class CertaGame {
       add(new THREE.BoxGeometry(0.5, 0.22, 0.16), dark, 0.08, 0.06, 0);   // body
       add(new THREE.BoxGeometry(0.32, 0.12, 0.12), blk, 0.28, 0.06, 0);    // slide
       add(new THREE.BoxGeometry(0.16, 0.3, 0.14), tan, -0.1, -0.14, 0);  // grip
-      add(new THREE.CylinderGeometry(0.04, 0.04, 0.18, 8), grey, 0.42, 0.06, 0, 0, 0, -Math.PI / 2); // barrel tip — rz=-PI/2 so axis is +X
+      add(new THREE.CylinderGeometry(0.04, 0.04, 0.18, 8), grey, 0.42, 0.06, 0, Math.PI / 2, 0, 0); // barrel tip
     } else if (type === 'shotgun') {
       add(new THREE.BoxGeometry(0.82, 0.22, 0.18), dark, 0.08, 0.06, 0);  // receiver
-      add(new THREE.CylinderGeometry(0.06, 0.06, 0.72, 8), grey, 0.48, 0.06, 0, 0, 0, -Math.PI / 2); // barrel — axis +X
+      add(new THREE.CylinderGeometry(0.06, 0.06, 0.72, 8), grey, 0.48, 0.06, 0, Math.PI / 2, 0, 0); // barrel
       add(new THREE.BoxGeometry(0.48, 0.16, 0.16), tan, -0.18, -0.04, 0); // pump
       add(new THREE.BoxGeometry(0.28, 0.38, 0.16), tan, -0.28, -0.2, 0);  // stock
     } else if (type === 'ar') {
       add(new THREE.BoxGeometry(0.90, 0.24, 0.18), dark, 0.04, 0.06, 0);  // body
       add(new THREE.BoxGeometry(0.26, 0.14, 0.12), grey, -0.38, 0.06, 0);  // carry handle
-      add(new THREE.CylinderGeometry(0.045, 0.045, 0.42, 8), grey, 0.52, 0.09, 0, 0, 0, -Math.PI / 2); // barrel — axis +X
+      add(new THREE.CylinderGeometry(0.045, 0.045, 0.42, 8), grey, 0.52, 0.09, 0, Math.PI / 2, 0, 0); // barrel
       add(new THREE.BoxGeometry(0.18, 0.36, 0.12), dark, -0.05, -0.18, 0); // mag
       add(new THREE.BoxGeometry(0.12, 0.08, 0.18), blk, -0.06, 0.18, 0);   // top rail
       add(new THREE.BoxGeometry(0.28, 0.34, 0.14), tan, -0.25, -0.11, 0); // stock
     } else if (type === 'sniper') {
       add(new THREE.BoxGeometry(1.10, 0.22, 0.18), dark, 0.04, 0.06, 0);  // long body
-      add(new THREE.CylinderGeometry(0.04, 0.04, 0.60, 8), grey, 0.66, 0.07, 0, 0, 0, -Math.PI / 2); // barrel — axis +X
+      add(new THREE.CylinderGeometry(0.04, 0.04, 0.60, 8), grey, 0.66, 0.07, 0, Math.PI / 2, 0, 0); // barrel
       add(new THREE.BoxGeometry(0.36, 0.42, 0.14), tan, -0.36, -0.12, 0);  // stock
-      // Scope — axis +X so it aligns with barrel after group rotation
-      add(new THREE.CylinderGeometry(0.05, 0.05, 0.44, 8), blk, 0.1, 0.19, 0, 0, 0, -Math.PI / 2);
-      add(new THREE.CylinderGeometry(0.07, 0.05, 0.06, 8), blk, 0.33, 0.19, 0, 0, 0, -Math.PI / 2); // scope front
+      // Scope
+      add(new THREE.CylinderGeometry(0.05, 0.05, 0.44, 8), blk, 0.1, 0.19, 0, Math.PI / 2, 0, 0);
+      add(new THREE.CylinderGeometry(0.07, 0.05, 0.06, 8), blk, 0.33, 0.19, 0, Math.PI / 2, 0, 0); // scope front
       add(new THREE.BoxGeometry(0.12, 0.06, 0.12), blk, -0.08, -0.2, 0);   // mag
     }
 
@@ -625,8 +659,10 @@ class CertaGame {
         if (h < minY) minY = h;
         if (h > maxY) maxY = h;
       });
-      // Place building floor at maxY (highest corner) so it's always above ground
+      // Place building floor at maxY so it's always above ground
       const gy = maxY;
+      // Store floor height for ground-snap override (player walks on floor inside buildings)
+      this.buildingFloors.push({ x: b.x, z: b.z, hw: b.w / 2, hd: b.d / 2, floorY: gy + 0.22 });
       const g = new THREE.Group();
       const H = 4.5; // wall height
       const T = 0.42;
@@ -734,16 +770,21 @@ class CertaGame {
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     canvas.addEventListener('mousedown', e => {
       if (!this.isLocked) return;
-      if (e.button === 0) { // LMB — shoot
+      if (e.button === 0) { // LMB
         this.mouseDown = true;
-        this._doShoot();
-        // Auto fire for AR
-        if (this.hasGun && GUN_INFO[this.gunType]?.auto) {
-          clearInterval(this.autoFireInterval);
-          this.autoFireInterval = setInterval(() => {
-            if (!this.mouseDown || !this.alive) return;
-            this._doShoot();
-          }, GUN_INFO[this.gunType].fireRate);
+        if (this.hasGun) {
+          // Armed: shoot
+          this._doShoot();
+          if (GUN_INFO[this.gunType]?.auto) {
+            clearInterval(this.autoFireInterval);
+            this.autoFireInterval = setInterval(() => {
+              if (!this.mouseDown || !this.alive) return;
+              this._doShoot();
+            }, GUN_INFO[this.gunType].fireRate);
+          }
+        } else {
+          // Unarmed: punch with left click
+          this._doPunch();
         }
       }
       if (e.button === 2) { // RMB — ADS
@@ -775,6 +816,7 @@ class CertaGame {
       if (e.code === 'KeyF') this._doPunch();
       if (e.code === 'KeyE') this._doPickup();
       if (e.code === 'KeyR') this._doReload();
+      if (e.code === 'KeyG') this._doDropWeapon();
       if (e.code === 'KeyT') { e.preventDefault(); this._openChat(); }
     });
     document.addEventListener('keyup', e => {
@@ -828,14 +870,11 @@ class CertaGame {
       type: 'shoot',
     }));
     this._muzzleFlash();
-    // Viewmodel recoil
+    // Viewmodel recoil kick
     this.vmRecoil = 1.0;
-    // Screen recoil — pitch camera upward slightly (gun type determines strength)
-    const recoilStrength = {
-      pistol: 0.018, ar: 0.010, shotgun: 0.055, sniper: 0.080,
-    };
-    const kick = recoilStrength[this.gunType] ?? 0.018;
-    this.pitch = Math.max(-1.3, Math.min(1.3, this.pitch - kick));
+    // Screen recoil — pitch INCREASES = camera tilts UP (mouse-up = pitch increases in this game)
+    const recoilStrength = { pistol: 0.022, ar: 0.011, shotgun: 0.065, sniper: 0.085 };
+    this.pitch = Math.max(-1.3, Math.min(1.3, this.pitch + (recoilStrength[this.gunType] ?? 0.022)));
     // Reduce local ammo immediately for responsiveness
     this.ammo = Math.max(0, this.ammo - 1);
     this._updateHUD();
@@ -894,6 +933,11 @@ class CertaGame {
     this.ws?.readyState === WebSocket.OPEN && this.ws.send(JSON.stringify({ type: 'pickup' }));
   }
 
+  _doDropWeapon() {
+    if (!this.alive || !this.hasGun || this.chatOpen) return;
+    this.ws?.readyState === WebSocket.OPEN && this.ws.send(JSON.stringify({ type: 'drop' }));
+  }
+
   _doReload() {
     if (!this.alive || !this.hasGun || this.isReloading || this.chatOpen) return;
     const gun = GUN_INFO[this.gunType];
@@ -950,11 +994,10 @@ class CertaGame {
   _respawn() {
     document.getElementById('death-screen').style.display = 'none';
     this.hasGun = false; this.ammo = 0; this.gunType = null;
-    this.isReloading = false;
-    if (this.vmGunMesh) { this.vmGunMesh.visible = false; }
-    if (this.vmArmL) this.vmArmL.visible = false;
-    if (this.vmArmR) this.vmArmR.visible = false;
+    this.isReloading = false; this.isADS = false;
     document.getElementById('reload-ring').classList.remove('visible');
+    document.getElementById('crosshair').classList.remove('ads');
+    this._showFists(); // bare fists after respawn
     this.ws?.readyState === WebSocket.OPEN && this.ws.send(JSON.stringify({ type: 'respawn' }));
   }
 
@@ -1078,15 +1121,36 @@ class CertaGame {
         this.hasGun = true;
         this.ammo = msg.ammo;
         this.gunType = msg.gunType;
+        this.isReloading = false;
         this._addChat(null, `You picked up a ${msg.gunType.toUpperCase()}!`, 'system');
-        this._buildViewmodelGun(msg.gunType);
-        if (this.vmGunMesh) this.vmGunMesh.visible = true;  // show gun now
+        this._buildViewmodelGun(msg.gunType); // rebuild mesh for new gun type
+        this._showGun();                      // trigger pull-out animation
+        this._updateHUD();
+        break;
+
+      case 'dropped':
+        // Server confirms drop — go back to fists
+        this.hasGun = false; this.ammo = 0; this.gunType = null;
+        this.isReloading = false; this.isADS = false;
+        document.getElementById('crosshair').classList.remove('ads');
+        document.getElementById('reload-ring').classList.remove('visible');
+        this._showFists();
         this._updateHUD();
         break;
 
       case 'lootUpdate':
         this._setLootAvailable(msg.id, msg.available, msg.gunType);
         break;
+
+      case 'lootSpawn': {
+        // Dynamically dropped weapon — create mesh on the fly
+        const mesh = this._makeLootMesh(msg.gunType);
+        const lx = msg.x, lz = msg.z;
+        mesh.position.set(lx, this._height(lx, lz) + 1.1, lz);
+        this.scene.add(mesh);
+        this.loots.push({ id: msg.id, mesh, available: true, x: lx, z: lz, gunType: msg.gunType });
+        break;
+      }
 
       case 'zombieUpdate':
         this._updateZombies(msg.zombies);
@@ -1327,8 +1391,7 @@ class CertaGame {
 
   _onZombieDied(msg) {
     const z = this.zombies.get(msg.id);
-    if (z) {
-      // Always spawn gore — server never sends msg.gore so old guard was always false
+    if (z && msg.gore) {
       const pos = z.mesh.position.clone();
       this.gore.spawnBlood(pos.clone().add(new THREE.Vector3(0, 0.8, 0)), 40, true);
       this.gore.spawnRagdoll(pos, null);
@@ -1408,35 +1471,36 @@ class CertaGame {
 
     ctx.fillStyle = '#2a6a2a';
     this.trees.forEach(t => {
-      const mx = cx + (t.x - px) * scale, my = cy - (t.z - pz) * scale;
+      const mx = cx + (t.x - px) * scale, my = cy + (t.z - pz) * scale;
       ctx.beginPath(); ctx.arc(mx, my, 2, 0, Math.PI * 2); ctx.fill();
     });
 
     ctx.fillStyle = '#b8a070';
     BUILDING_DEFS.forEach(b => {
-      const mx = cx + (b.x - px) * scale, my = cy - (b.z - pz) * scale;
+      const mx = cx + (b.x - px) * scale, my = cy + (b.z - pz) * scale;
       ctx.fillRect(mx - b.w * scale / 2, my - b.d * scale / 2, b.w * scale, b.d * scale);
     });
 
     ctx.fillStyle = '#cc2222';
     this.zombies.forEach(z => {
-      const mx = cx + (z.mesh.position.x - px) * scale, my = cy - (z.mesh.position.z - pz) * scale;
+      const mx = cx + (z.mesh.position.x - px) * scale, my = cy + (z.mesh.position.z - pz) * scale;
       ctx.beginPath(); ctx.arc(mx, my, 3, 0, Math.PI * 2); ctx.fill();
     });
 
     this.others.forEach(o => {
       ctx.fillStyle = o.color || '#ff4444';
-      const mx = cx + (o.mesh.position.x - px) * scale, my = cy - (o.mesh.position.z - pz) * scale;
+      const mx = cx + (o.mesh.position.x - px) * scale, my = cy + (o.mesh.position.z - pz) * scale;
       ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI * 2); ctx.fill();
     });
 
-    // Self
+    // Self dot
     ctx.fillStyle = this.myColor || '#00ccff';
     ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
-    // Direction arrow — negate dz to match negated map Z
-    const dx = Math.sin(this.yaw) * 8, dz = Math.cos(this.yaw) * 8;
+    // Direction arrow — forward world dir = (-sin(yaw), -cos(yaw)) → canvas (-sin, -cos) because canvas +Y = south
+    const arrowX = -Math.sin(this.yaw) * 9;
+    const arrowZ = -Math.cos(this.yaw) * 9;
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + dx, cy - dz); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + arrowX, cy + arrowZ); ctx.stroke();
 
     ctx.globalCompositeOperation = 'destination-in';
     ctx.beginPath(); ctx.arc(cx, cy, cx, 0, Math.PI * 2); ctx.fill();
@@ -1446,44 +1510,44 @@ class CertaGame {
   // ── Collision resolution (buildings + trees) ─────────────────
   _resolveCollisions() {
     const r = 0.45;  // player capsule radius
-    const T = 0.42;  // wall thickness
+    const T = 0.45;  // wall thickness (slightly padded)
     const DW = 2.0;  // door width
+    const px = this.footPos.x, pz = this.footPos.z;
 
-    // Proper AABB + circle overlap:
-    // Compute Minkowski sum overlap on each axis.
-    // Push out along whichever axis has the SMALLER overlap (minimum penetration).
-    const pushOut = (bx, bz, hw, hd) => {
-      const overlapX = (hw + r) - Math.abs(this.footPos.x - bx);
-      const overlapZ = (hd + r) - Math.abs(this.footPos.z - bz);
-      if (overlapX <= 0 || overlapZ <= 0) return; // no overlap
-      if (overlapX < overlapZ) {
-        // Push along X
-        this.footPos.x += (this.footPos.x < bx) ? -overlapX : overlapX;
-      } else {
-        // Push along Z
-        this.footPos.z += (this.footPos.z < bz) ? -overlapZ : overlapZ;
+    // Helper: push player out of an AABB (2D, ignoring Y)
+    const pushOut = (cx, cz, hw, hd) => {
+      // Find closest point on box to player circle center
+      const nearX = Math.max(cx - hw, Math.min(this.footPos.x, cx + hw));
+      const nearZ = Math.max(cz - hd, Math.min(this.footPos.z, cz + hd));
+      const dx = this.footPos.x - nearX;
+      const dz = this.footPos.z - nearZ;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > 0 && dist < r) {
+        this.footPos.x += (dx / dist) * (r - dist);
+        this.footPos.z += (dz / dist) * (r - dist);
       }
     };
 
-    const hw2 = T / 2;
-
+    // Buildings — each wall is a separate AABB so the door gap is preserved
     for (const b of BUILDING_DEFS) {
-      // Back wall (full width, no door)
+      const hw2 = T / 2;
+      // Back wall (full width)
       pushOut(b.x, b.z - b.d / 2, b.w / 2, hw2);
       // Left wall
       pushOut(b.x - b.w / 2, b.z, hw2, b.d / 2);
       // Right wall
       pushOut(b.x + b.w / 2, b.z, hw2, b.d / 2);
-      // Front wall — two pieces either side of door gap
+      // Front wall left piece (from -w/2 to -DW/2)
       if (b.w > DW) {
-        const pieceHW = (b.w - DW) / 4; // half-width of each front piece
-        pushOut(b.x - (b.w + DW) / 4, b.z + b.d / 2, pieceHW, hw2);
-        pushOut(b.x + (b.w + DW) / 4, b.z + b.d / 2, pieceHW, hw2);
+        const pieceW = (b.w - DW) / 4;  // half-width of each front piece
+        pushOut(b.x - (b.w + DW) / 4, b.z + b.d / 2, pieceW, hw2);
+        // Front wall right piece (from +DW/2 to +w/2)
+        pushOut(b.x + (b.w + DW) / 4, b.z + b.d / 2, pieceW, hw2);
       }
     }
 
-    // Trees — cylinder check (trunk base radius ≈ 0.48)
-    const treeR = 0.52 + r;
+    // Trees — cylinder check (trunk radius ~0.48)
+    const treeR = 0.48 + r;
     for (const t of this.trees) {
       const dx = this.footPos.x - t.x;
       const dz = this.footPos.z - t.z;
@@ -1521,9 +1585,6 @@ class CertaGame {
   _updateViewmodel(dt, t) {
     if (!this.vmRoot || !this.alive) return;
 
-    // Resting position: right-of-center (hip), centered when ADS
-    // vmCamera space: +X right, +Y up, -Z forward
-    // At Z=-0.55, frustum half-height = tan(32.5°)*0.55 ≈ 0.35 — keep Y within that range
     const hipX = 0.18, hipY = -0.26, hipZ = -0.55;
     const adsX = 0.00, adsY = -0.10, adsZ = -0.48;
     const tx = this.isADS ? adsX : hipX;
@@ -1534,37 +1595,48 @@ class CertaGame {
     this.vmIdleBob += dt * 1.2;
     const bob = Math.sin(this.vmIdleBob) * 0.004;
 
-    // Punch animation — right arm punches forward (negative Z = forward in cam space)
+    // ── Pull-out animation: vmRoot slides up from below (Y starts -0.55 below hip) ──
+    if (this.vmPullingOut) {
+      this.vmPullout = Math.min(1, this.vmPullout + dt * 3.5); // ~0.28s to fully draw
+      const pullY = (1 - this.vmPullout) * -0.55; // starts low, reaches 0 at completion
+      this.vmRoot.position.set(tx, ty + pullY + bob, tz);
+      if (this.vmPullout >= 1) this.vmPullingOut = false;
+      return;
+    }
+
+    // ── Punch animation — swings the active arm forward in -Z ──
+    const activeArmR = this.hasGun ? this.vmArmR : this.vmFistR;
+    const activeArmL = this.hasGun ? this.vmArmL : this.vmFistL;
     if (this.vmPunchAnim > 0) {
       this.vmPunchAnim -= dt * 5.0;
       if (this.vmPunchAnim < 0) this.vmPunchAnim = 0;
       const punch = Math.sin(this.vmPunchAnim * Math.PI);
-      if (this.vmArmR) this.vmArmR.position.z = -punch * 0.18;
-      if (this.vmArmL) this.vmArmL.position.z = -0.12 - punch * 0.08;
+      if (activeArmR) activeArmR.position.z = -punch * 0.22;
+      if (activeArmL) activeArmL.position.z = (this.hasGun ? -0.15 : -0.08) - punch * 0.06;
     } else {
-      if (this.vmArmR) this.vmArmR.position.z = 0.0;
-      if (this.vmArmL) this.vmArmL.position.z = -0.12;
+      if (activeArmR) activeArmR.position.z = 0.0;
+      if (activeArmL) activeArmL.position.z = this.hasGun ? -0.15 : -0.08;
     }
 
-    // Reload animation — vmReloadAnim goes from 0→1 over reloadDuration seconds
-    // sin(progress * π): starts at 0, peaks at 0.5 (full drop), back to 0 at 1
+    // ── Reload animation ──
     if (this.isReloading) {
       const dur = this.reloadDuration || 1.5;
       this.vmReloadAnim = Math.min(1, this.vmReloadAnim + dt / dur);
-      const dropY = Math.sin(this.vmReloadAnim * Math.PI) * -0.38;
+      const dropY = Math.sin(this.vmReloadAnim * Math.PI) * -0.42;
       this.vmRoot.position.set(tx, ty + dropY + bob, tz);
-      return; // skip normal lerp while reloading
+      return;
     }
 
-    // Recoil kick
+    // ── Recoil: kick vmRoot back (+Z) and UP (+Y) — matches screen kick direction ──
     let recoilZ = 0, recoilY = 0;
     if (this.vmRecoil > 0) {
       this.vmRecoil -= dt * 8;
       if (this.vmRecoil < 0) this.vmRecoil = 0;
       const k = Math.sin(this.vmRecoil * Math.PI);
-      recoilZ = k * 0.04;
-      recoilY = k * -0.012;
+      recoilZ = k * 0.045;   // gun pushes back toward camera
+      recoilY = k * 0.014;   // gun kicks upward (matches screen pitch up)
     }
+
     // Smooth lerp to target
     this.vmRoot.position.x += (tx - this.vmRoot.position.x) * Math.min(1, dt * 14);
     this.vmRoot.position.y += (ty + bob + recoilY - this.vmRoot.position.y) * Math.min(1, dt * 14);
@@ -1605,10 +1677,17 @@ class CertaGame {
       this.velocity.y -= 22 * dt;
       this.footPos.y += this.velocity.y * dt;
 
-      // Ground snap
-      const gy = this._height(this.footPos.x, this.footPos.z);
-      if (this.footPos.y <= gy) {
-        this.footPos.y = gy;
+      // Ground snap — use building floor height when inside a building
+      let effectiveGY = this._height(this.footPos.x, this.footPos.z);
+      for (const bf of this.buildingFloors) {
+        if (Math.abs(this.footPos.x - bf.x) < bf.hw &&
+            Math.abs(this.footPos.z - bf.z) < bf.hd) {
+          effectiveGY = Math.max(effectiveGY, bf.floorY);
+          break;
+        }
+      }
+      if (this.footPos.y <= effectiveGY) {
+        this.footPos.y = effectiveGY;
         this.velocity.y = 0;
         this.onGround = true;
       }
@@ -1683,7 +1762,7 @@ class CertaGame {
       this._animateCharacter(o.mesh, o.mesh.position.distanceTo(prev) > 0.01, t);
     });
 
-    // ── Interpolate zombies + HP bar distance culling ──
+    // ── Interpolate zombies ──
     this.zombies.forEach(z => {
       const prev = z.mesh.position.clone();
       z.mesh.position.lerp(z.targetPos, 0.2);
@@ -1696,13 +1775,6 @@ class CertaGame {
       }
       z.mesh.userData.isZombie = true;
       this._animateCharacter(z.mesh, moved > 0.01, t);
-
-      // Only show HP bar when zombie is within 30 units of player
-      if (z.hpSprite) {
-        const pdx = z.mesh.position.x - this.footPos.x;
-        const pdz = z.mesh.position.z - this.footPos.z;
-        z.hpSprite.visible = (pdx * pdx + pdz * pdz) < 900; // 30² = 900
-      }
     });
 
     // ── Floating loot ──

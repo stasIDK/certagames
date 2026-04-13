@@ -353,28 +353,74 @@ wss.on('connection', (ws, req) => {
 
       case 'pickup': {
         if (!p.alive) break;
-        // Drop current gun first (handled client-side by 1-slot logic)
+        let picked = false;
         loots.forEach(l => {
-          if (!l.available) return;
+          if (picked || !l.available) return;
           const dx = l.x - p.x, dz = l.z - p.z;
           if (Math.sqrt(dx * dx + dz * dz) > 3.5) return;
-          // Drop existing gun back as loot if player has one
-          if (p.hasGun && p.gunType) {
-            // Find a nearby empty loot slot or just replace
-            l.gunType = p.gunType;
-          }
-          l.available = false;
-          p.hasGun = true;
-          p.gunType = l.gunType;
-          p.ammo = GUN_DEFS[p.gunType].ammo;
-          sendTo(id, { type: 'pickedUpGun', ammo: p.ammo, gunType: p.gunType });
-          broadcast({ type: 'lootUpdate', id: l.id, available: false, gunType: l.gunType });
-          setTimeout(() => {
+          picked = true;
+          const oldGunType = p.hasGun ? p.gunType : null;
+          const newGunType = l.gunType;
+          // Put old gun into this loot slot so the world gun visually swaps
+          if (oldGunType) {
+            l.gunType = oldGunType;
             l.available = true;
-            l.gunType = BUILDING_DEFS[l.id] ? BUILDING_DEFS[l.id].gun : 'pistol';
             broadcast({ type: 'lootUpdate', id: l.id, available: true, gunType: l.gunType });
+          } else {
+            l.available = false;
+            broadcast({ type: 'lootUpdate', id: l.id, available: false, gunType: l.gunType });
+            // Respawn the slot after 5 min only if no gun was dropped into it
+            setTimeout(() => {
+              if (!l.available) {
+                l.available = true;
+                l.gunType = BUILDING_DEFS[l.id] ? BUILDING_DEFS[l.id].gun : 'pistol';
+                broadcast({ type: 'lootUpdate', id: l.id, available: true, gunType: l.gunType });
+              }
+            }, LOOT_RESPAWN_TIME);
+          }
+          p.hasGun = true;
+          p.gunType = newGunType;
+          p.ammo = GUN_DEFS[p.gunType]?.ammo || 12;
+          sendTo(id, { type: 'pickedUpGun', ammo: p.ammo, gunType: p.gunType });
+        });
+        break;
+      }
+
+      case 'drop': {
+        if (!p.alive || !p.hasGun) break;
+        // Spawn a loot pickup at the player's feet for the dropped gun
+        const dropGun = p.gunType;
+        p.hasGun = false; p.gunType = null; p.ammo = 0;
+        sendTo(id, { type: 'dropped' });
+        // Find nearest available loot slot or create a temporary one
+        let placed = false;
+        loots.forEach(l => {
+          if (placed || l.available) return;
+          const dx = l.x - p.x, dz = l.z - p.z;
+          if (Math.sqrt(dx * dx + dz * dz) > 8) return;
+          placed = true;
+          l.gunType = dropGun; l.available = true;
+          broadcast({ type: 'lootUpdate', id: l.id, available: true, gunType: l.gunType });
+          setTimeout(() => {
+            if (l.available && l.gunType === dropGun) {
+              l.available = false;
+              broadcast({ type: 'lootUpdate', id: l.id, available: false });
+            }
           }, LOOT_RESPAWN_TIME);
         });
+        if (!placed) {
+          // Use a temporary loot entry near the player
+          const tid = loots.length;
+          const lx = p.x + (Math.random() - 0.5) * 1.5;
+          const lz = p.z + (Math.random() - 0.5) * 1.5;
+          const tmp = { id: tid, x: lx, z: lz, gunType: dropGun, available: true };
+          loots.push(tmp);
+          broadcast({ type: 'lootSpawn', id: tid, x: lx, z: lz, gunType: dropGun });
+          setTimeout(() => {
+            tmp.available = false;
+            broadcast({ type: 'lootUpdate', id: tid, available: false });
+          }, LOOT_RESPAWN_TIME);
+        }
         break;
       }
 
