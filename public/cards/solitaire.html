@@ -27,6 +27,9 @@
 
 body {
   background: var(--bg);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(13,43,26,.6) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 80% 80%, rgba(26,58,122,.08) 0%, transparent 60%);
   min-height: 100vh;
   font-family: 'DM Mono', monospace;
   overflow: hidden;
@@ -300,20 +303,23 @@ header {
   width: var(--card-w);
   height: var(--card-h);
   border-radius: var(--card-r);
-  border: 1.5px dashed rgba(212,168,83,0.18);
+  border: 1.5px dashed rgba(212,168,83,0.2);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(212,168,83,0.18);
+  color: rgba(212,168,83,0.2);
   font-size: 22px;
   position: relative;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  background: rgba(0,0,0,0.08);
 }
+.slot:hover { border-color: rgba(212,168,83,0.4); background: rgba(212,168,83,0.04); }
 .slot.droppable {
-  border-color: rgba(212,168,83,0.6);
-  background: rgba(212,168,83,0.06);
+  border-color: rgba(212,168,83,0.7);
+  background: rgba(212,168,83,0.08);
+  box-shadow: inset 0 0 16px rgba(212,168,83,0.08);
 }
 
 /* Tableau columns */
@@ -348,25 +354,26 @@ header {
 }
 
 .card.face-down {
-  background: linear-gradient(145deg, var(--back1), var(--back2));
-  border: 1.5px solid rgba(255,255,255,0.08);
-  box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+  background: linear-gradient(145deg, #1e4090, var(--back2));
+  border: 1.5px solid rgba(255,255,255,0.1);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
 }
 .card.face-down::before {
   content: '';
   position: absolute;
-  inset: 6px;
+  inset: 5px;
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1.5px solid rgba(255,255,255,0.12);
   background:
-    repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.03) 4px, rgba(255,255,255,0.03) 5px),
-    repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(255,255,255,0.03) 4px, rgba(255,255,255,0.03) 5px);
+    radial-gradient(ellipse at 30% 30%, rgba(255,255,255,0.06) 0%, transparent 60%),
+    repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.025) 5px, rgba(255,255,255,0.025) 6px),
+    repeating-linear-gradient(-45deg, transparent, transparent 5px, rgba(255,255,255,0.025) 5px, rgba(255,255,255,0.025) 6px);
 }
 
 .card.face-up {
-  background: var(--white);
-  border: 1px solid rgba(0,0,0,0.15);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.55), 0 1px 3px rgba(0,0,0,0.3);
+  background: linear-gradient(160deg, #fff 0%, #f5f0e8 100%);
+  border: 1px solid rgba(0,0,0,0.12);
+  box-shadow: 0 4px 14px rgba(0,0,0,.6), 0 1px 3px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.8);
 }
 
 /* Color is set via data attribute to avoid CSS specificity issues */
@@ -380,8 +387,14 @@ header {
 
 .card.draggable { cursor: grab; }
 .card.draggable:hover {
-  box-shadow: 0 6px 18px rgba(0,0,0,0.65), 0 1px 4px rgba(0,0,0,0.3);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 22px rgba(0,0,0,.7), 0 1px 4px rgba(0,0,0,.3), 0 0 0 1px rgba(212,168,83,.15);
+  transform: translateY(-3px) scale(1.015);
+  transition: transform .15s cubic-bezier(.34,1.56,.64,1), box-shadow .15s;
+}
+.card.draggable:active {
+  cursor: grabbing;
+  transform: scale(1.05) translateY(-4px);
+  transition: transform .08s ease;
 }
 
 .card-tl, .card-br {
@@ -456,11 +469,12 @@ header {
 
 /* ── DEAL ANIMATION ── */
 @keyframes dealSlide {
-  from { transform: translate(var(--dx), var(--dy)) scale(0.85); opacity: 0; }
-  to   { transform: translate(0, 0) scale(1); opacity: 1; }
+  0%   { transform: translate(var(--dx), var(--dy)) scale(0.78) rotate(var(--dr,0deg)); opacity: 0; }
+  60%  { opacity: 1; }
+  100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
 }
 .card.dealing {
-  animation: dealSlide 0.32s cubic-bezier(0.22,1,0.36,1) forwards;
+  animation: dealSlide 0.38s cubic-bezier(0.22,1,0.36,1) forwards;
 }
 
 /* ── WASTE DRAW ANIMATION ── */
@@ -470,6 +484,31 @@ header {
 }
 .card.waste-in {
   animation: wasteIn 0.22s cubic-bezier(0.22,1,0.36,1) forwards;
+}
+
+/* ── DOUBLE-CLICK AUTO-PLACE ANIMATION ── */
+@keyframes cardAutoPlace {
+  0%   { transform: scale(1) translateY(0); filter: brightness(1); }
+  45%  { transform: scale(1.13) translateY(-11px); filter: brightness(1.35); box-shadow: 0 18px 44px rgba(0,0,0,.65); }
+  100% { transform: scale(1) translateY(0); filter: brightness(1); }
+}
+@keyframes cardShake {
+  0%,100% { transform: translateX(0) rotate(0deg); }
+  12%     { transform: translateX(-8px) rotate(-2.5deg); }
+  25%     { transform: translateX(8px) rotate(2.5deg); }
+  37%     { transform: translateX(-6px) rotate(-2deg); }
+  50%     { transform: translateX(6px) rotate(2deg); }
+  62%     { transform: translateX(-4px) rotate(-1.2deg); }
+  75%     { transform: translateX(4px) rotate(1.2deg); }
+  87%     { transform: translateX(-2px) rotate(-0.4deg); }
+}
+.card-autoplace {
+  animation: cardAutoPlace 0.19s cubic-bezier(.34,1.56,.64,1) forwards;
+  position: relative; z-index: 200;
+}
+.card-shake {
+  animation: cardShake 0.44s cubic-bezier(.36,.07,.19,.97) both;
+  pointer-events: none;
 }
 
 /* Drag ghost */
@@ -531,8 +570,23 @@ header {
   animation: confFall linear forwards;
 }
 @keyframes confFall {
-  0%   { transform: translateY(-10px) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(105vh) rotate(600deg); opacity: 0; }
+  0%   { transform: translateY(-10px) rotate(0deg) scale(1); opacity: 1; }
+  80%  { opacity: 0.8; }
+  100% { transform: translateY(105vh) rotate(720deg) scale(0.4); opacity: 0; }
+}
+
+/* Win sparkle burst */
+.sparkle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 4998;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  animation: sparkleOut linear forwards;
+}
+@keyframes sparkleOut {
+  0%   { transform: translate(0,0) scale(1.5); opacity: 1; }
+  100% { transform: translate(var(--sx), var(--sy)) scale(0); opacity: 0; }
 }
 /* ── MOBILE ── */
 @media (max-width: 600px) {
@@ -964,15 +1018,41 @@ function autoMove(src, ci, ri) {
   // Try foundation if single card
   if(pile.length === 1) {
     let fi = bestFoundation(pile[0]);
-    if(fi >= 0) { pushHistory(); doMove(src, ci, ri, pile, 'found', fi); return; }
+    if(fi >= 0) { pushHistory(); doMove(src, ci, ri, pile, 'found', fi); return true; }
   }
   // Try tableau
   for(let tci = 0; tci < 7; tci++) {
     if(src === 'tab' && tci === ci) continue;
     let topCard = tab[tci].length > 0 ? tab[tci][tab[tci].length - 1] : null;
     if(canStack(pile[0], topCard)) {
-      pushHistory(); doMove(src, ci, ri, pile, 'tab', tci); return;
+      pushHistory(); doMove(src, ci, ri, pile, 'tab', tci); return true;
     }
+  }
+  return false;
+}
+
+function canAutoMove(src, ci, ri) {
+  let pile;
+  if(src === 'waste') pile = waste[ri] ? [waste[ri]] : [];
+  else pile = tab[ci].slice(ri);
+  if(!pile.length) return false;
+  if(pile.length === 1 && bestFoundation(pile[0]) >= 0) return true;
+  for(let tci = 0; tci < 7; tci++) {
+    if(src === 'tab' && tci === ci) continue;
+    let topCard = tab[tci].length > 0 ? tab[tci][tab[tci].length - 1] : null;
+    if(canStack(pile[0], topCard)) return true;
+  }
+  return false;
+}
+
+function dblClickCard(el, src, ci, ri) {
+  if(el.classList.contains('card-shake') || el.classList.contains('card-autoplace')) return;
+  if(canAutoMove(src, ci, ri)) {
+    el.classList.add('card-autoplace');
+    setTimeout(() => autoMove(src, ci, ri), 175);
+  } else {
+    el.classList.add('card-shake');
+    el.addEventListener('animationend', () => el.classList.remove('card-shake'), { once: true });
   }
 }
 
@@ -1030,21 +1110,46 @@ function showWin() {
   document.getElementById('win-time-display').textContent = 'Finished in ' + fmtTime(finalTime);
   document.getElementById('win-overlay').classList.add('show');
   submitScore(finalTime);
-  let colors = ['#d4a853','#e8c27a','#ffffff','#c0392b','#1a3a7a','#2ecc71'];
-  for(let i = 0; i < 100; i++) {
+
+  // Confetti burst
+  const colors = ['#d4a853','#e8c27a','#ffffff','#c0392b','#1a3a7a','#2ecc71','#9b59b6','#f39c12'];
+  const shapes = ['2px','4px','6px'];
+  for(let i = 0; i < 160; i++) {
     setTimeout(() => {
       let el = document.createElement('div');
       el.className = 'conf';
       el.style.left = Math.random()*100 + 'vw';
+      el.style.top  = '-12px';
       el.style.background = colors[Math.floor(Math.random()*colors.length)];
-      let sz = 6 + Math.random()*7;
-      el.style.width = sz + 'px';
-      el.style.height = sz + 'px';
-      el.style.animationDuration = (2 + Math.random()*3) + 's';
-      el.style.animationDelay = (Math.random()*0.5) + 's';
+      let sz = 5 + Math.random()*9;
+      el.style.width  = sz + 'px';
+      el.style.height = (Math.random() > 0.4 ? sz : sz * 0.4) + 'px';
+      el.style.animationDuration = (2.5 + Math.random()*3) + 's';
+      el.style.animationDelay    = '0s';
       document.body.appendChild(el);
-      setTimeout(() => el.remove(), 6000);
-    }, i * 40);
+      setTimeout(() => el.remove(), 7000);
+    }, i * 25);
+  }
+
+  // Sparkle burst from foundation area
+  const foundEl = document.querySelector('.foundation-zone');
+  if(foundEl) {
+    const r = foundEl.getBoundingClientRect();
+    const cx2 = r.left + r.width/2, cy2 = r.top + r.height/2;
+    for(let i = 0; i < 28; i++) {
+      const ang = (i / 28) * Math.PI * 2;
+      const dist = 60 + Math.random() * 120;
+      const el = document.createElement('div');
+      el.className = 'sparkle';
+      el.style.left = cx2 + 'px'; el.style.top = cy2 + 'px';
+      el.style.background = colors[i % colors.length];
+      el.style.setProperty('--sx', (Math.cos(ang)*dist) + 'px');
+      el.style.setProperty('--sy', (Math.sin(ang)*dist) + 'px');
+      el.style.animationDuration = (0.5 + Math.random()*0.6) + 's';
+      el.style.animationDelay    = (i * 0.015) + 's';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1500);
+    }
   }
 }
 
@@ -1111,7 +1216,7 @@ function renderWaste() {
       c.classList.add('draggable');
       let wi = waste.length - 1;
       attachDrag(c, 'waste', null, wi);
-      c.addEventListener('dblclick', e => { e.stopPropagation(); autoMove('waste', null, wi); });
+      c.addEventListener('dblclick', e => { e.stopPropagation(); dblClickCard(c, 'waste', null, wi); });
     }
     el.appendChild(c);
   });
@@ -1207,7 +1312,7 @@ function renderTableau() {
           if(card.up) {
             plain.classList.add('draggable');
             attachDrag(plain, 'tab', ci, ri);
-            plain.addEventListener('dblclick', e => { e.stopPropagation(); autoMove('tab', ci, ri); });
+            plain.addEventListener('dblclick', e => { e.stopPropagation(); dblClickCard(plain, 'tab', ci, ri); });
           }
           wrapper.replaceWith(plain);
         }, { once: true });
@@ -1225,8 +1330,11 @@ function renderTableau() {
           let dy = stockRect.top  - cardTopPx;
           c.style.setProperty('--dx', dx + 'px');
           c.style.setProperty('--dy', dy + 'px');
-          // Stagger: deal column by column, row by row
-          let delay = (ci * 3 + ri) * 55;
+          // Slight random rotation for realism
+          const rot = ((ri % 3) - 1) * 6;
+          c.style.setProperty('--dr', rot + 'deg');
+          // Stagger: deal diagonal (col by col)
+          let delay = (ci * 2 + ri) * 48;
           c.style.animationDelay = delay + 'ms';
           c.classList.add('dealing');
         }
@@ -1234,7 +1342,7 @@ function renderTableau() {
         if(card.up) {
           c.classList.add('draggable');
           attachDrag(c, 'tab', ci, ri);
-          c.addEventListener('dblclick', e => { e.stopPropagation(); autoMove('tab', ci, ri); });
+          c.addEventListener('dblclick', e => { e.stopPropagation(); dblClickCard(c, 'tab', ci, ri); });
         }
         col.appendChild(c);
       }
@@ -1258,6 +1366,8 @@ let drag = null;
 
 // ─── DRAG ────────────────────────────────────
 let activeTouchId = null;
+// Double-tap tracking for mobile
+let _tapTrack = { el: null, time: 0 };
 
 // Block page scroll while dragging on touch
 document.addEventListener('touchmove', e => { if(drag) e.preventDefault(); }, { passive: false });
@@ -1276,11 +1386,17 @@ function attachDrag(el, src, ci, ri) {
     let cards = getCards(src, ci, ri);
     if(cards) beginDrag(e.clientX, e.clientY, src, ci, ri, cards, el);
   });
-  // Touch
+  // Touch — with mobile double-tap detection
   el.addEventListener('touchstart', e => {
     if(activeTouchId !== null) return;
     e.preventDefault(); e.stopPropagation();
     let t = e.changedTouches[0];
+    // Double-tap: second tap on same card within 320ms
+    if(_tapTrack.el === el && Date.now() - _tapTrack.time < 320) {
+      _tapTrack.el = null;
+      dblClickCard(el, src, ci, ri);
+      return;
+    }
     activeTouchId = t.identifier;
     let cards = getCards(src, ci, ri);
     if(cards) beginDrag(t.clientX, t.clientY, src, ci, ri, cards, el);
@@ -1307,7 +1423,8 @@ function beginDrag(clientX, clientY, src, ci, ri, cards, origEl) {
     ghost.appendChild(c);
   });
 
-  drag = { src, ci, ri, cards, offX: clientX - rect.left, offY: clientY - rect.top };
+  drag = { src, ci, ri, cards, offX: clientX - rect.left, offY: clientY - rect.top,
+           startTime: Date.now(), startX: clientX, startY: clientY, origEl: origEl };
   posGhost(clientX, clientY);
 
   // Use opacity so elements stay in DOM — safer than visibility
@@ -1402,7 +1519,16 @@ function endDrag(cx, cy) {
   }
   // Failed — restore opacity
   if(drag.hiddenEls) drag.hiddenEls.forEach(el => { el.style.visibility = ''; el.style.pointerEvents = ''; });
-  sndInvalid();
+  // Detect "tap" (no movement, very quick) for double-tap tracking
+  const _wasTap = (activeTouchId !== null) &&
+                  (Date.now() - (drag.startTime||0) < 240) &&
+                  (Math.abs(cx - (drag.startX||cx)) < 14) &&
+                  (Math.abs(cy - (drag.startY||cy)) < 14);
+  if(_wasTap && drag.origEl) {
+    _tapTrack.el = drag.origEl; _tapTrack.time = Date.now();
+  } else {
+    sndInvalid();
+  }
   drag = null; activeTouchId = null;
 }
 

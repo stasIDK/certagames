@@ -292,6 +292,7 @@ function showMain(user) {
   document.getElementById('user-name').textContent=user?.name||sessionStorage.getItem('user_name')||'';
   document.getElementById('login-screen').classList.remove('show');
   document.getElementById('main-page').classList.add('show');
+  loadLeaderboards();
 }
 function doLogout(){clearToken();window.location.reload();}
 (function init(){
@@ -335,9 +336,7 @@ async function loadLeaderboards() {
     renderLB('lb-solitaire',sData.slice(0, 10).map(e => ({ name: e.name, val: fmtTime(e.time) })));
   } catch(e) { /* leaderboard load failed silently */ }
 }
-// Load boards once main page is visible
-const _origShowMain = showMain;
-window.showMain = function(user) { _origShowMain(user); loadLeaderboards(); };
+// Leaderboards load automatically via showMain()
 </script>
 </body>
 </html>

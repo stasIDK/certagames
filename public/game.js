@@ -24,6 +24,15 @@ const GUN_INFO = {
   sniper: { label: 'SNIPER', maxAmmo: 5, color: '#44ccff', fireRate: 1800, auto: false },
 };
 
+// ── Upgrade defs (fallback — server sends authoritative copy on welcome) ──
+const DEFAULT_UPGRADE_DEFS = {
+  dmg_boost:  { cost: 150, label: '+ Gun Damage',  desc: '+30% gun damage per level', maxLevel: 3 },
+  extra_hp:   { cost: 175, label: '+ Max Health',  desc: '+50 max HP per level',      maxLevel: 2 },
+  fast_regen: { cost: 125, label: 'Adrenaline',    desc: '3× health regen rate',      maxLevel: 1 },
+  shield:     { cost: 200, label: 'Energy Shield', desc: '+80 HP shield buffer',      maxLevel: 999 },
+  ammo_refill:{ cost:  60, label: 'Ammo Refill',   desc: 'Instantly refill all ammo', maxLevel: 999 },
+};
+
 // ══════════════════════════════════════════════════════════════
 // ── Gore Manager ─────────────────────────────────────────────
 class GoreManager {
@@ -259,8 +268,8 @@ class CertaGame {
     this.balance = 100;
     this.zombieKills = 0;
     this.shieldHp = 0;
-    this.upgrades = {};      // { dmg_boost: 0, extra_hp: 0, fast_regen: false, shield: 0 }
-    this.upgradeDefs = {};   // filled from server welcome message
+    this.upgrades = {};
+    this.upgradeDefs = DEFAULT_UPGRADE_DEFS; // server may override on welcome
     this.shopOpen = false;
 
     // Gore + traces
@@ -892,6 +901,8 @@ class CertaGame {
     // Reduce local ammo immediately for responsiveness
     this.ammo = Math.max(0, this.ammo - 1);
     this._updateHUD();
+    // Auto-reload when magazine empties
+    if (this.ammo === 0) setTimeout(() => this._doReload(), 220);
 
     // Bullet trace — cast from eye in view direction
     this._castBulletTrace();
@@ -1053,7 +1064,8 @@ class CertaGame {
         msg.loots.forEach(l => this._setLootAvailable(l.id, l.available, l.gunType));
         if (msg.balance !== undefined) this.balance = msg.balance;
         if (msg.kills !== undefined) this.zombieKills = msg.kills;
-        if (msg.upgradeDefs) this.upgradeDefs = msg.upgradeDefs;
+        // Merge server defs on top of client defaults (handles old/new server)
+        if (msg.upgradeDefs) this.upgradeDefs = Object.assign({}, DEFAULT_UPGRADE_DEFS, msg.upgradeDefs);
         this._updatePlayerCount();
         this._updateHUD();
         break;
@@ -1157,6 +1169,7 @@ class CertaGame {
         break;
 
       case 'upgradeResult':
+        this._buyPending = false;
         if (msg.ok) {
           this.balance = msg.balance;
           if (msg.maxHp !== undefined) this.maxHp = msg.maxHp;
@@ -1265,7 +1278,7 @@ class CertaGame {
     const o = this.others.get(msg.id);
     if (o) {
       o.targetPos.set(msg.x, msg.y + FOOT_OFFSET, msg.z);
-      o.mesh.rotation.y = msg.rotY || 0;
+      o.mesh.rotation.y = (msg.rotY || 0) + Math.PI;
     }
   }
 
@@ -1621,6 +1634,8 @@ class CertaGame {
   }
 
   _buyUpgrade(uid) {
+    if (this._buyPending) return;
+    this._buyPending = true;
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'buyUpgrade', upgradeId: uid }));
     }

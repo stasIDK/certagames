@@ -22,7 +22,11 @@
       "Bash(findstr \":3000\")",
       "Bash(taskkill /F /PID 10736)",
       "Bash(taskkill:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(winget:*)",
+      "Bash(ls C:\\\\Users\\\\stasy\\\\certagames/*.js)",
+      "Bash(ls C:\\\\Users\\\\stasy\\\\certagames/server*)",
+      "Bash(curl -s http://localhost:3000/)"
     ]
   }
 }

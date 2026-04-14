@@ -39,9 +39,29 @@ body::before{
 .screen.active{display:flex;flex-direction:column}
 
 /* ── LOADING ── */
-#screen-loading{align-items:center;justify-content:center;background:var(--bg)}
-.loading-logo{font-family:'Playfair Display',serif;font-style:italic;font-size:52px;color:var(--gold2);text-align:center;animation:pulse 2s infinite}
-.loading-sub{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,168,76,.3);margin-top:12px;text-align:center}
+#screen-loading{align-items:center;justify-content:center;background:var(--bg);flex-direction:column;gap:0}
+.loading-cards-row{display:flex;gap:10px;margin-bottom:28px}
+.lcard{
+  width:42px;height:58px;border-radius:6px;
+  background:linear-gradient(145deg,#1e4090,#0e2456);
+  border:1.5px solid rgba(255,255,255,.18);
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;
+  animation:ldealCard .9s cubic-bezier(.22,1,.36,1) both;
+}
+.lcard.r{color:#c0392b}
+.lcard.b{color:var(--gold2)}
+@keyframes ldealCard{
+  0%{transform:translateY(-40px) rotate(-15deg) scale(.6);opacity:0}
+  60%{transform:translateY(4px) rotate(2deg) scale(1.04);opacity:1}
+  100%{transform:translateY(0) rotate(0deg) scale(1);opacity:1}
+}
+.loading-logo{font-family:'Playfair Display',serif;font-style:italic;font-size:52px;color:var(--gold2);text-align:center;animation:logoShimmer 2.2s ease infinite}
+.loading-sub{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:rgba(201,168,76,.3);margin-top:10px;text-align:center}
+.loading-bar-wrap{width:160px;height:2px;background:rgba(201,168,76,.12);border-radius:2px;margin-top:28px;overflow:hidden}
+.loading-bar-fill{height:100%;width:0%;background:var(--gold);border-radius:2px;animation:loadFill 1.4s cubic-bezier(.4,0,.2,1) forwards .3s}
+@keyframes loadFill{0%{width:0%}100%{width:100%}}
+@keyframes logoShimmer{0%,100%{opacity:.85;text-shadow:0 0 0 transparent}50%{opacity:1;text-shadow:0 0 30px rgba(201,168,76,.35)}}
 @keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}
 
 /* ── HEADER ── */
@@ -174,14 +194,20 @@ body::before{
 .game-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .poker-table{
   flex:1;
-  background:radial-gradient(ellipse 80% 70% at 50% 50%,#1a4025,#0d2010 60%,#060d06);
+  background:
+    radial-gradient(ellipse 55% 45% at 50% 40%, rgba(30,70,38,.8), transparent),
+    radial-gradient(ellipse 80% 70% at 50% 50%,#1a4025,#0d2010 60%,#060d06);
   border:8px solid #1a0f05;
   border-radius:50% / 30%;
   margin:20px 30px;
   position:relative;
   display:flex;align-items:center;justify-content:center;
   min-height:300px;
-  box-shadow:inset 0 0 60px rgba(0,0,0,.5),0 0 40px rgba(0,0,0,.8)
+  box-shadow:
+    inset 0 0 80px rgba(0,0,0,.55),
+    inset 0 0 0 3px rgba(201,168,76,.06),
+    0 0 50px rgba(0,0,0,.85),
+    0 0 0 2px rgba(201,168,76,.04)
 }
 .table-inner{
   position:absolute;inset:12px;
@@ -214,15 +240,17 @@ body::before{
 }
 .deck-card-back{
   width:var(--card-w);height:var(--card-h);
-  background:linear-gradient(145deg,#1a3a7a,#0e2456);
-  border:2px solid rgba(255,255,255,.15);border-radius:8px;
+  background:linear-gradient(145deg,#1e4090,#0e2456);
+  border:2px solid rgba(255,255,255,.18);border-radius:8px;
   position:relative;overflow:hidden;
-  box-shadow:2px 2px 8px rgba(0,0,0,.5)
+  box-shadow:2px 3px 12px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.08)
 }
 .deck-card-back::before{
   content:'';position:absolute;inset:4px;
-  border:1px solid rgba(255,255,255,.12);border-radius:5px;
-  background:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.04) 4px,rgba(255,255,255,.04) 8px)
+  border:1.5px solid rgba(255,255,255,.14);border-radius:5px;
+  background:
+    radial-gradient(ellipse at 30% 25%, rgba(255,255,255,.07) 0%, transparent 50%),
+    repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.03) 4px,rgba(255,255,255,.03) 5px)
 }
 .deck-count{font-size:10px;color:var(--muted);margin-top:6px;letter-spacing:.08em}
 
@@ -277,7 +305,15 @@ body::before{
 .card.selectable{cursor:pointer}
 .card.selectable:hover{transform:translateY(-8px) scale(1.04);box-shadow:0 8px 20px rgba(0,0,0,.6);z-index:10}
 .card.selected{transform:translateY(-12px);box-shadow:0 0 0 2px var(--gold),0 8px 24px rgba(0,0,0,.6);z-index:11}
-.card.trump-card{box-shadow:0 0 0 2px var(--gold),0 0 12px rgba(201,168,76,.7),0 0 24px rgba(201,168,76,.35);background:linear-gradient(135deg,#fffcf0 70%,rgba(201,168,76,.18))}
+.card.trump-card{
+  box-shadow:0 0 0 2px var(--gold),0 0 16px rgba(201,168,76,.8),0 0 32px rgba(201,168,76,.4);
+  background:linear-gradient(135deg,#fffff0 0%,#fffcf0 60%,rgba(201,168,76,.22) 100%);
+  animation:trumpGlow 2s ease-in-out infinite;
+}
+@keyframes trumpGlow{
+  0%,100%{box-shadow:0 0 0 2px var(--gold),0 0 14px rgba(201,168,76,.7),0 0 28px rgba(201,168,76,.35)}
+  50%{box-shadow:0 0 0 2.5px var(--gold2),0 0 22px rgba(201,168,76,1),0 0 44px rgba(201,168,76,.55)}
+}
 .card-tl{position:absolute;top:4px;left:5px;display:flex;flex-direction:column;align-items:center;gap:0}
 .card-br{position:absolute;bottom:4px;right:5px;display:flex;flex-direction:column;align-items:center;gap:0;transform:rotate(180deg)}
 .card-rank{font-size:13px;font-weight:700;line-height:1}
@@ -364,7 +400,7 @@ body::before{
   60% {transform:rotate(12deg) translateY(2px) translateX(-2px) scale(1.03)}
   to  {transform:rotate(10deg) translateY(0) translateX(0) scale(1);opacity:1}
 }
-.def-anim{animation:defSlide .35s cubic-bezier(.34,1.46,.64,1) both}
+.def-anim{animation:defSlide .52s cubic-bezier(.34,1.46,.64,1) both}
 
 /* Card flies from hand to table (attack play) */
 @keyframes cardPlayDown{
@@ -372,7 +408,7 @@ body::before{
   60% {transform:translateY(-6px) scale(1.06) rotate(-2deg);opacity:1}
   100%{transform:translateY(0) scale(1) rotate(0);opacity:1}
 }
-.card-play-down{animation:cardPlayDown .4s cubic-bezier(.22,1,.36,1) both}
+.card-play-down{animation:cardPlayDown .58s cubic-bezier(.22,1,.36,1) both}
 
 /* Card swoops into hand (draw from deck) */
 @keyframes cardDraw{
@@ -398,9 +434,9 @@ body::before{
   40% {transform:translateY(-8px) scale(1.06)}
   100%{transform:translateY(70px) scale(.65);opacity:0}
 }
-.card-take-l{animation:cardTakeLeft .55s cubic-bezier(.4,0,1,1) both}
-.card-take-r{animation:cardTakeRight .55s cubic-bezier(.4,0,1,1) both}
-.card-take-c{animation:cardTakeCenter .55s cubic-bezier(.4,0,1,1) both}
+.card-take-l{animation:cardTakeLeft .75s cubic-bezier(.4,0,1,1) both}
+.card-take-r{animation:cardTakeRight .75s cubic-bezier(.4,0,1,1) both}
+.card-take-c{animation:cardTakeCenter .75s cubic-bezier(.4,0,1,1) both}
 
 /* Pile cleared — cards burst out */
 @keyframes cardClear{
@@ -408,14 +444,14 @@ body::before{
   50% {transform:scale(1.12) translateY(-8px)}
   100%{transform:scale(.5) translateY(-40px);opacity:0}
 }
-.card-clear{animation:cardClear .4s cubic-bezier(.4,0,1,1) both}
+.card-clear{animation:cardClear .62s cubic-bezier(.4,0,1,1) both}
 
 /* Hand card stagger-in */
 @keyframes handCardIn{
   from{transform:translateY(28px) scale(.85);opacity:0}
   to{transform:translateY(0) scale(1);opacity:1}
 }
-.card-hand-in{animation:handCardIn .3s cubic-bezier(.22,1,.36,1) both}
+.card-hand-in{animation:handCardIn .45s cubic-bezier(.22,1,.36,1) both}
 
 /* Glow pulse when it's your turn */
 @keyframes turnGlow{
@@ -484,7 +520,16 @@ body::before{
 /* pile-on banner removed */
 
 /* ── PLAYER SEAT TIMER ── */
+@keyframes seatTurnPulse{
+  0%,100%{box-shadow:0 0 0 2px rgba(201,168,76,.35),0 0 10px rgba(201,168,76,.15)}
+  50%    {box-shadow:0 0 0 3px rgba(201,168,76,.75),0 0 22px rgba(201,168,76,.45)}
+}
 .player-seat.their-turn .player-seat-name{color:var(--gold2)}
+.player-seat.their-turn{
+  border-radius:10px;
+  animation:seatTurnPulse 1.5s ease-in-out infinite;
+  background:rgba(201,168,76,.06);
+}
 .player-seat-timer{
   width:36px;height:3px;background:rgba(255,255,255,.15);border-radius:3px;margin-top:3px;overflow:hidden
 }
@@ -611,8 +656,15 @@ body::before{
 
 <!-- Loading -->
 <div class="screen active" id="screen-loading">
-  <div class="loading-logo">♠ Durak</div>
-  <div class="loading-sub">Loading…</div>
+  <div class="loading-cards-row">
+    <div class="lcard b" style="animation-delay:.05s">♠</div>
+    <div class="lcard r" style="animation-delay:.15s">♥</div>
+    <div class="lcard r" style="animation-delay:.25s">♦</div>
+    <div class="lcard b" style="animation-delay:.35s">♣</div>
+  </div>
+  <div class="loading-logo">Дурак</div>
+  <div class="loading-sub">The Russian Card Game</div>
+  <div class="loading-bar-wrap"><div class="loading-bar-fill"></div></div>
 </div>
 
 <!-- Lobby -->
@@ -954,42 +1006,72 @@ function connectSocket() {
     _lastAnnouncedAttacker = -1;
     showScreen('game');
     renderGame();
+    // Hide hand cards during deal animation, reveal them card-by-card after
+    const handZone = document.getElementById('my-hand-zone');
+    const handCards = handZone ? Array.from(handZone.querySelectorAll('.card')) : [];
+    handCards.forEach(c => { c.style.opacity = '0'; c.style.transform = 'translateY(16px) scale(0.88)'; });
     playDealAnimation(state, () => {
-      startTurnTimer(state);
-      showTurnAnnounce(state);
+      // Reveal my hand cards one by one after deal
+      handCards.forEach((c, i) => {
+        setTimeout(() => {
+          c.style.transition = 'opacity 0.28s ease, transform 0.32s cubic-bezier(.22,1,.36,1)';
+          c.style.opacity = '1';
+          c.style.transform = '';
+        }, i * 80);
+      });
+      setTimeout(() => {
+        startTurnTimer(state);
+        showTurnAnnounce(state);
+      }, handCards.length * 80 + 120);
     });
   });
 
-  socket.on('game:state', (state) => {
-    const prevPhase = gameData?.phase;
+  let _pendingState = null, _renderQueued = false;
+  function applyState(state, turnChanged) {
+    gameData = state;
+    renderGame();
+    if(turnChanged) showTurnAnnounce(state);
+    // Drain any pending update that arrived while we were paused
+    if(_pendingState) {
+      const next = _pendingState;
+      _pendingState = null;
+      scheduleStateApply(next);
+    } else {
+      _renderQueued = false;
+    }
+  }
+  function scheduleStateApply(state) {
+    const prevPhase    = gameData?.phase;
     const prevAttacker = gameData?.attackerIdx;
     const prevDefender = gameData?.defenderIdx;
     const prevTableLen = gameData?.table?.length || 0;
+    const newTableLen  = state.table?.length || 0;
     const prevTableHadCards = prevTableLen > 0;
-    const newTableEmpty = !state.table || state.table.length === 0;
-
-    // Detect turn change — only when attacker/defender seat actually changed
+    const newTableEmpty     = newTableLen === 0;
+    const newCardPlayed     = newTableLen > prevTableLen;
     const turnChanged = state.phase === 'attack' &&
                         (state.attackerIdx !== prevAttacker || state.defenderIdx !== prevDefender);
-
-    // If table just cleared (successful defense) — animate before re-render
-    if(prevTableHadCards && newTableEmpty && prevPhase === 'defend') {
-      animateClearTable(() => {
-        gameData = state;
-        renderGame();
-        if(turnChanged) showTurnAnnounce(state);
-      });
+    if(prevTableHadCards && newTableEmpty && (prevPhase === 'defend' || prevPhase === 'pre-take')) {
+      animateClearTable(() => applyState(state, turnChanged));
+    } else if(newCardPlayed) {
+      // Brief pause so the card-play-down animation is fully visible
+      setTimeout(() => applyState(state, turnChanged), 180);
     } else {
-      gameData = state;
-      renderGame();
-      if(turnChanged) showTurnAnnounce(state);
+      applyState(state, turnChanged);
     }
-
-    // Restart turn timer if turn changed
     if(state.phase !== prevPhase || state.attackerIdx !== prevAttacker || state.defenderIdx !== prevDefender) {
       startTurnTimer(state);
     }
+  }
 
+  socket.on('game:state', (state) => {
+    if(_renderQueued) {
+      // Stash — will be applied after current render settles
+      _pendingState = state;
+      return;
+    }
+    _renderQueued = true;
+    scheduleStateApply(state);
   });
 
   socket.on('game:over', async (data) => {
@@ -1816,7 +1898,7 @@ function showTurnAnnounce(state) {
   _turnAnnounceTimer = setTimeout(() => {
     inner.classList.add('out');
     setTimeout(() => overlay.classList.remove('show'), 480);
-  }, 2400);
+  }, 3200);
 }
 
 // ─── DEAL ANIMATION ───────────────────────────
@@ -1825,69 +1907,67 @@ function playDealAnimation(state, onDone) {
   overlay.innerHTML = '';
   overlay.classList.add('active');
 
-  // Find the deck position (bottom-right of poker table)
+  const cardW = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w')) || 72;
+  const cardH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h')) || 100;
+
+  // Deck position
   const deckEl = document.getElementById('deck-card');
-  const deckR = deckEl ? deckEl.getBoundingClientRect() : { left: window.innerWidth * 0.8, top: window.innerHeight * 0.7, width: 72, height: 100 };
+  const deckR = deckEl ? deckEl.getBoundingClientRect()
+    : { left: window.innerWidth * 0.8, top: window.innerHeight * 0.6, width: cardW, height: cardH };
   const deckX = deckR.left + deckR.width / 2;
-  const deckY = deckR.top + deckR.height / 2;
+  const deckY = deckR.top  + deckR.height / 2;
 
-  // Find my hand zone
+  // My hand zone
   const handZone = document.getElementById('my-hand-zone');
-  const handR = handZone ? handZone.getBoundingClientRect() : { left: window.innerWidth * 0.2, top: window.innerHeight * 0.8, width: 300, height: 100 };
-  const handX = handR.left + handR.width / 2;
-  const handY = handR.top + handR.height / 2;
+  const handR = handZone ? handZone.getBoundingClientRect()
+    : { left: window.innerWidth * 0.2, top: window.innerHeight * 0.82, width: 300, height: 100 };
+  const handX = handR.left + handR.width  / 2;
+  const handY = handR.top  + handR.height / 2;
 
-  // Find other player seats
-  const seatPositions = {
-    'seat-top':   () => { const e = document.getElementById('seat-top');   if(!e||e.style.display==='none') return null; const r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; },
-    'seat-left':  () => { const e = document.getElementById('seat-left');  if(!e||e.style.display==='none') return null; const r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; },
-    'seat-right': () => { const e = document.getElementById('seat-right'); if(!e||e.style.display==='none') return null; const r=e.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; },
-  };
+  // Other seats
+  const seatIds = ['seat-top', 'seat-left', 'seat-right'];
+  const otherTargets = seatIds.map(id => {
+    const e = document.getElementById(id);
+    if(!e || e.style.display === 'none') return null;
+    const r = e.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }).filter(Boolean);
 
-  const n = state.players.length;
-  const myCards = state.myCards?.length || 6;
-  const totalCards = n * 6; // roughly
-  const cardDelay = 80; // ms between each card flip
+  const targets = [{ x: handX, y: handY }, ...otherTargets];
+  const n       = Math.min(state.players?.length || 2, targets.length);
+  const ROUNDS  = 6;
+  const DELAY   = 70; // ms per card
 
-  let cardsFired = 0;
-  const targets = [
-    { x: handX, y: handY },
-    ...[seatPositions['seat-top'](), seatPositions['seat-left'](), seatPositions['seat-right']()].filter(Boolean)
-  ];
-
-  // Deal 6 cards to each of n players in round-robin
   let idx = 0;
-  for(let round = 0; round < 6; round++) {
-    for(let p = 0; p < Math.min(n, targets.length); p++) {
-      const delay = idx * cardDelay;
-      const target = targets[p % targets.length];
-      (function(d, t) {
+  for(let round = 0; round < ROUNDS; round++) {
+    for(let p = 0; p < n; p++) {
+      const target = targets[p];
+      const delay  = idx * DELAY;
+      (function fireCard(d, t, isMyCard) {
         setTimeout(() => {
           const card = document.createElement('div');
           card.className = 'deal-card-fly';
-          card.style.left = (deckX - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-w') || '72') / 2) + 'px';
-          card.style.top  = (deckY - parseInt(getComputedStyle(document.documentElement).getPropertyValue('--card-h') || '100') / 2) + 'px';
-          card.style.transition = 'none';
+          card.style.left = (deckX - cardW / 2) + 'px';
+          card.style.top  = (deckY - cardH / 2) + 'px';
           overlay.appendChild(card);
 
+          // Two-frame delay to let browser paint starting position
           requestAnimationFrame(() => requestAnimationFrame(() => {
-            const cardW = card.offsetWidth;
-            const cardH = card.offsetHeight;
-            card.style.transition = 'transform 0.32s cubic-bezier(.22,1,.36,1), opacity 0.15s ease 0.22s';
-            const dx = t.x - deckX;
-            const dy = t.y - deckY;
-            const angle = (Math.random() - 0.5) * 20;
-            card.style.transform = `translate(${dx}px, ${dy}px) rotate(${angle}deg) scale(0.85)`;
-            card.style.opacity = '0';
-            setTimeout(() => card.remove(), 450);
+            const dx    = t.x - deckX;
+            const dy    = t.y - deckY;
+            const angle = isMyCard ? 0 : (Math.random() - 0.5) * 18;
+            card.style.transition = 'transform 0.3s cubic-bezier(.22,1,.36,1), opacity 0.22s ease 0.22s';
+            card.style.transform  = `translate(${dx}px,${dy}px) rotate(${angle}deg) scale(${isMyCard ? 0.9 : 0.78})`;
+            card.style.opacity    = '0';
+            setTimeout(() => card.remove(), 520);
           }));
         }, d);
-      })(delay, target);
+      })(delay, target, p === 0);
       idx++;
     }
   }
 
-  const totalDuration = idx * cardDelay + 500;
+  const totalDuration = (idx - 1) * DELAY + 520 + 80;
   setTimeout(() => {
     overlay.classList.remove('active');
     overlay.innerHTML = '';
@@ -1921,7 +2001,7 @@ function animateClearTable(onDone) {
       c.style.animationDelay = (i * 40) + 'ms';
     });
   });
-  setTimeout(() => { onDone && onDone(); }, 280 + pairs.length * 40);
+  setTimeout(() => { onDone && onDone(); }, 440 + pairs.length * 60);
 }
 
 function doAttack(card) {
@@ -1943,10 +2023,14 @@ function doTransfer(card) {
     selectedCard=null;
   });
 }
+let _takePending = false;
 function doTake() {
+  if(_takePending) return;
+  _takePending = true;
   // Animate cards flying toward hand before server confirms
   animateTakeCards(() => {
     socket.emit('game:take', (res) => {
+      _takePending = false;
       if(res?.error) showToast(res.error);
       selectedCard=null; selectedAttackCard=null;
     });

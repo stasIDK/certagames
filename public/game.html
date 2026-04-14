@@ -63,8 +63,11 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Mono', monosp
 #lock-overlay {
   position:fixed; inset:0; display:none; align-items:center; justify-content:center;
   z-index:9; background:rgba(0,0,0,0.55); backdrop-filter:blur(2px); cursor:pointer;
+  flex-direction:column; gap:16px;
 }
 #lock-overlay p { font-size:15px; letter-spacing:0.15em; text-transform:uppercase; color:rgba(255,255,255,0.5); }
+.lock-back-link { font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(255,255,255,0.22); text-decoration:none; transition:color 0.2s; pointer-events:auto; }
+.lock-back-link:hover { color:rgba(255,255,255,0.55); }
 
 /* ── HUD ── */
 #hud { position:fixed; inset:0; display:none; pointer-events:none; z-index:5; }
@@ -137,8 +140,11 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Mono', monosp
 #gun-name    { font-size:11px; letter-spacing:0.15em; text-transform:uppercase; color:#ffdd88; }
 #ammo-display{ font-size:18px; letter-spacing:0.05em; color:#fff; font-weight:500; }
 
-/* Top-right: player count */
-#player-count { position:absolute; top:16px; right:20px; font-size:12px; color:rgba(255,255,255,0.45); letter-spacing:0.06em; }
+/* Top-right: player count + lobby button */
+#hud-top-right { position:absolute; top:16px; right:20px; display:flex; flex-direction:column; align-items:flex-end; gap:6px; pointer-events:auto; }
+#player-count { font-size:12px; color:rgba(255,255,255,0.45); letter-spacing:0.06em; }
+#lobby-btn { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:rgba(255,255,255,0.2); text-decoration:none; transition:color 0.2s; }
+#lobby-btn:hover { color:rgba(255,255,255,0.55); }
 
 /* Top-left: coords */
 #coords { position:absolute; top:16px; left:20px; font-size:10px; color:rgba(255,255,255,0.3); letter-spacing:0.06em; }
@@ -288,6 +294,7 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Mono', monosp
 <!-- Pointer-lock overlay -->
 <div id="lock-overlay">
   <p>Click to capture mouse</p>
+  <a class="lock-back-link" href="/">&#8592; Back to Lobby</a>
 </div>
 
 <!-- HUD (shown once inside the game) -->
@@ -316,7 +323,10 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Mono', monosp
 
   <div id="kill-reward"></div>
 
-  <div id="player-count">👥 0 players</div>
+  <div id="hud-top-right">
+    <div id="player-count">👥 0 players</div>
+    <a id="lobby-btn" href="/">&#8592; Lobby</a>
+  </div>
   <div id="coords"></div>
   <div id="pickup-prompt"></div>
 
@@ -349,7 +359,7 @@ html, body { height: 100%; background: var(--bg); font-family: 'DM Mono', monosp
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="/game.js?v=3"></script>
+<script src="/game.js?v=4"></script>
 <script>
 function getToken()  { return sessionStorage.getItem('auth_token'); }
 function setToken(t) { sessionStorage.setItem('auth_token', t); }
